@@ -1,0 +1,50 @@
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/web_scraper
+    username: mac_pg
+    password: 12345678
+    driver-class-name: org.postgresql.Driver
+
+  batch:
+    jdbc:
+      initialize-schema: always
+    job:
+      enabled: false  # Prevents automatic job execution on startup
+
+# Python scraper configuration
+python:
+  scraper:
+    path: src/main/resources/scraper-script/web_scraper.py
+    executable: python3  # or specify full path like: /usr/local/bin/python3 or ./venv/bin/python
+  env:
+    BASE_URL: https://www.ppcbank.com.kh/
+    CRAWL_DELAY: 0.5
+    MAX_DEPTH: 3
+    MAX_CONTENT_LENGTH: 5000
+    MAX_WORKERS: 5
+
+# Spring Batch scheduler config
+scraper:
+  schedule:
+    cron: "*/30 * * * * ?" # Every 30 seconds for testing; change to "0 0 3 * * ?" for daily at 3AM
+    # For production, use: "0 0 3 * * ?" (daily at 3AM)
+    # Other examples:
+    # "0 */15 * * * ?" (every 15 minutes)
+    # "0 30 2 * * ?" (daily at 2:30 AM)
+
+# Logging configuration
+logging:
+  level:
+    org.kosign.chatbotapi.batch: DEBUG
+    org.springframework.batch: INFO
+    org.kosign.chatbotapi.config.springBatch: DEBUG
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
