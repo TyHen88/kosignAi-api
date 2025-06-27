@@ -78,6 +78,65 @@
             border: 1px solid #e5e7eb;
         }
 
+        .ai-message h2 {
+            color: #4f46e5;
+            margin: 15px 0 10px 0;
+            font-size: 18px;
+            border-bottom: 2px solid #e5e7eb;
+            padding-bottom: 5px;
+        }
+
+        .ai-message h2:first-child {
+            margin-top: 0;
+        }
+
+        .ai-message ul {
+            margin: 10px 0;
+            padding-left: 20px;
+        }
+
+        .ai-message li {
+            margin: 5px 0;
+            line-height: 1.5;
+        }
+
+        .ai-message table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 10px 0;
+            font-size: 14px;
+        }
+
+        .ai-message table th,
+        .ai-message table td {
+            border: 1px solid #d1d5db;
+            padding: 8px 12px;
+            text-align: left;
+        }
+
+        .ai-message table th {
+            background-color: #f9fafb;
+            font-weight: 600;
+            color: #374151;
+        }
+
+        .ai-message table tr:nth-child(even) {
+            background-color: #f9fafb;
+        }
+
+        .ai-message strong {
+            color: #374151;
+            font-weight: 600;
+        }
+
+        .ai-message code {
+            background-color: #f3f4f6;
+            padding: 2px 4px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+        }
+
         .loading {
             align-self: flex-start;
             background: #f3f4f6;
@@ -199,9 +258,67 @@
         function addMessage(content, isUser = false) {
             const messageDiv = document.createElement('div');
             messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
-            messageDiv.textContent = content;
+            
+            if (isUser) {
+                messageDiv.textContent = content;
+            } else {
+                // Parse markdown for AI messages
+                messageDiv.innerHTML = parseMarkdown(content);
+            }
+            
             chatMessages.appendChild(messageDiv);
             chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function parseMarkdown(text) {
+            // Simple markdown parser for our structured format
+            let html = text;
+            
+            // Convert headers (## Header)
+            html = html.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+            
+            // Convert tables
+            html = html.replace(/\|(.+)\|/g, function(match, content) {
+                const cells = content.split('|').map(cell => cell.trim());
+                if (content.includes('---')) {
+                    // Header separator row - skip it
+                    return '';
+                } else if (html.indexOf(match) === html.indexOf('|')) {
+                    // First row (header)
+                    return '<table><thead><tr>' + cells.map(cell => `<th>${cell}</th>`).join('') + '</tr></thead><tbody>';
+                } else {
+                    // Data rows
+                    return '<tr>' + cells.map(cell => `<td>${cell}</td>`).join('') + '</tr>';
+                }
+            });
+            
+            // Close table if we opened one
+            if (html.includes('<table>')) {
+                html = html.replace(/(<tr>.*<\/tr>)(?!.*<tr>)/s, '$1</tbody></table>');
+            }
+            
+            // Convert bullet points (- item)
+            html = html.replace(/^- (.+$)/gm, '<li>$1</li>');
+            html = html.replace(/(<li>.*<\/li>)/s, '<ul>$1</ul>');
+            
+            // Fix multiple consecutive ul tags
+            html = html.replace(/<\/ul>\s*<ul>/g, '');
+            
+            // Convert bold text (**text**)
+            html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            // Convert newlines to br tags
+            html = html.replace(/\n/g, '<br>');
+            
+            // Clean up extra br tags around headers and tables
+            html = html.replace(/<br>\s*<h2>/g, '<h2>');
+            html = html.replace(/<\/h2><br>/g, '</h2>');
+            html = html.replace(/<br>\s*<table>/g, '<table>');
+            html = html.replace(/<\/table><br>/g, '</table>');
+            html = html.replace(/<br>\s*<ul>/g, '<ul>');
+            html = html.replace(/<\/ul><br>/g, '</ul>');
+            
+            return html;
         }
 
         function addLoadingMessage() {
