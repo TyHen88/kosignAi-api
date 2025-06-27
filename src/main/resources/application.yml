@@ -8,10 +8,16 @@ spring:
         format_sql: true
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/web_scraper
-    username: mac_pg
+    url: jdbc:postgresql://localhost:5433/web_scraper
+    username: postgres
     password: 12345678
     driver-class-name: org.postgresql.Driver
+
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema.sql
+      continue-on-error: true
 
   batch:
     jdbc:
@@ -31,10 +37,31 @@ python:
     MAX_CONTENT_LENGTH: 5000
     MAX_WORKERS: 5
 
+# AI Chatbot Configuration
+ai:
+  google:
+    api-key: ${GOOGLE_API_KEY:AIzaSyDRJBKHpje1T8hYmiAHxmnKnGjYmEQCjO8}
+    model: gemini-1.5-flash
+    max-tokens: 1000
+    temperature: 0.7
+  chat:
+    system-prompt: |
+      You are an expert banking assistant for PPC Bank (Phnom Penh Commercial Bank). You are knowledgeable, friendly, and helpful.
+      
+      Your role is to:
+      - Answer questions about PPC Bank's services, products, and procedures
+      - Help customers understand banking concepts and processes
+      - Provide accurate information based on available data
+      - Be conversational and approachable while maintaining professionalism
+      - Suggest related services that might interest the customer
+      - Guide customers to appropriate channels for detailed assistance when needed
+      
+      Always be helpful, even when you don't have complete information. Provide general banking guidance and suggest contacting PPC Bank directly for specific details.
+
 # Spring Batch scheduler config
 scraper:
   schedule:
-    cron: "*/30 * * * * ?" # Every 30 seconds for testing; change to "0 0 3 * * ?" for daily at 3AM
+    cron: "0 30 2 * * ?" #"*/30 * * * * ?"  Every 30 seconds for testing; change to "0 0 3 * * ?" for daily at 3AM
     # For production, use: "0 0 3 * * ?" (daily at 3AM)
     # Other examples:
     # "0 */15 * * * ?" (every 15 minutes)
@@ -46,5 +73,7 @@ logging:
     org.kosign.chatbotapi.batch: DEBUG
     org.springframework.batch: INFO
     org.kosign.chatbotapi.config.springBatch: DEBUG
+    org.springframework.sql.init: DEBUG
+    org.kosign.chatbotapi.service: DEBUG
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"

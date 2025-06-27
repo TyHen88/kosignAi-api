@@ -161,13 +161,13 @@ public class PythonScrapingTasklet implements Tasklet {
 
     private void setupEnvironmentVariables(Map<String, String> env) {
         // Parse database connection details
-        String datasourceUrl = environment.getProperty("spring.datasource.url", "jdbc:postgresql://localhost:5432/web_scraper");
+        String datasourceUrl = environment.getProperty("spring.datasource.url", "jdbc:postgresql://localhost:5433/web_scraper");
         String dbName = extractDbName(datasourceUrl);
         String[] hostPort = extractHostAndPort(datasourceUrl);
 
         // Database configuration
         env.put("DB_NAME", dbName);
-        env.put("DB_USER", environment.getProperty("spring.datasource.username", "mac_pg"));
+        env.put("DB_USER", environment.getProperty("spring.datasource.username", "postgres"));
         env.put("DB_PASSWORD", environment.getProperty("spring.datasource.password", "12345678"));
         env.put("DB_HOST", hostPort[0]);
         env.put("DB_PORT", hostPort[1]);
@@ -216,7 +216,7 @@ public class PythonScrapingTasklet implements Tasklet {
 
     private String[] extractHostAndPort(String datasourceUrl) {
         String host = "localhost";
-        String port = "5432";
+        String port = "5433";
 
         try {
             String hostPortPart = datasourceUrl.split("://")[1].split("/")[0];

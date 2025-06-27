@@ -1,4 +1,3 @@
-
 #!/usr/bin/env python3
 import requests
 from bs4 import BeautifulSoup
@@ -45,15 +44,16 @@ class SpringIntegratedScraper:
         try:
             self.conn = psycopg2.connect(
                 dbname=os.getenv('DB_NAME', 'web_scraper'),
-                user=os.getenv('DB_USER', 'mac_pg'),
+                user=os.getenv('DB_USER', 'postgres'),
                 password=os.getenv('DB_PASSWORD', '12345678'),
                 host=os.getenv('DB_HOST', 'localhost'),
-                port=os.getenv('DB_PORT', '5432')
+                port=os.getenv('DB_PORT', '5433')
             )
             print("Successfully connected to PostgreSQL database")
         except psycopg2.Error as e:
             print(f"PostgreSQL connection error: {e}")
             raise
+
     def is_valid_url(self, url):
         """Check if URL is valid and belongs to the target domain"""
         try:

@@ -35,6 +35,10 @@ dependencies {
 	// PostgreSQL JDBC Driver
 	runtimeOnly 'org.postgresql:postgresql'
 
+	// AI Integration Dependencies - Using HTTP client for Google Gemini API
+	implementation 'com.fasterxml.jackson.core:jackson-databind'
+	implementation 'com.squareup.okhttp3:okhttp:4.12.0'
+
 	// Lombok
 	compileOnly 'org.projectlombok:lombok'
 	annotationProcessor 'org.projectlombok:lombok'

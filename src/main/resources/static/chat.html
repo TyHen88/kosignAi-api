@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PPC Bank AI Assistant</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 15px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            width: 90%;
+            max-width: 800px;
+            height: 80vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        .chat-header {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            padding: 20px;
+            text-align: center;
+        }
+
+        .chat-header h1 {
+            margin-bottom: 5px;
+            font-size: 24px;
+        }
+
+        .chat-header p {
+            opacity: 0.9;
+            font-size: 14px;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .message {
+            max-width: 80%;
+            padding: 15px;
+            border-radius: 15px;
+            word-wrap: break-word;
+        }
+
+        .user-message {
+            align-self: flex-end;
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+        }
+
+        .ai-message {
+            align-self: flex-start;
+            background: #f3f4f6;
+            color: #1f2937;
+            border: 1px solid #e5e7eb;
+        }
+
+        .loading {
+            align-self: flex-start;
+            background: #f3f4f6;
+            color: #6b7280;
+            border: 1px solid #e5e7eb;
+            font-style: italic;
+        }
+
+        .chat-input {
+            display: flex;
+            padding: 20px;
+            border-top: 1px solid #e5e7eb;
+            gap: 10px;
+        }
+
+        .chat-input input {
+            flex: 1;
+            padding: 15px;
+            border: 2px solid #e5e7eb;
+            border-radius: 25px;
+            outline: none;
+            font-size: 16px;
+            transition: border-color 0.3s;
+        }
+
+        .chat-input input:focus {
+            border-color: #4f46e5;
+        }
+
+        .send-button {
+            background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%);
+            color: white;
+            border: none;
+            padding: 15px 25px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: transform 0.2s;
+        }
+
+        .send-button:hover {
+            transform: translateY(-2px);
+        }
+
+        .send-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .stats-button {
+            background: #10b981;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            margin-top: 10px;
+        }
+
+        .stats-button:hover {
+            background: #059669;
+        }
+
+        .status {
+            text-align: center;
+            padding: 10px;
+            font-size: 14px;
+            color: #6b7280;
+        }
+
+        .status.error {
+            color: #ef4444;
+            background: #fef2f2;
+        }
+
+        .status.success {
+            color: #10b981;
+            background: #f0fdf4;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h1>🤖 PPC Bank AI Assistant</h1>
+            <p>Ask me anything about PPC Bank services and information</p>
+            <button class="stats-button" onclick="getStats()">📊 Database Stats</button>
+        </div>
+        
+        <div class="chat-messages" id="chatMessages">
+            <div class="message ai-message">
+                👋 Hello! I'm your PPC Bank AI assistant. I can help you find information about PPC Bank services, products, and more. What would you like to know?
+            </div>
+        </div>
+        
+        <div class="status" id="status">Ready to help you!</div>
+        
+        <div class="chat-input">
+            <input type="text" id="userInput" placeholder="Type your question here..." 
+                   onkeypress="handleKeyPress(event)">
+            <button class="send-button" id="sendButton" onclick="sendMessage()">Send</button>
+        </div>
+    </div>
+
+    <script>
+        const chatMessages = document.getElementById('chatMessages');
+        const userInput = document.getElementById('userInput');
+        const sendButton = document.getElementById('sendButton');
+        const status = document.getElementById('status');
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        }
+
+        function addMessage(content, isUser = false) {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user-message' : 'ai-message'}`;
+            messageDiv.textContent = content;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        function addLoadingMessage() {
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message loading';
+            messageDiv.id = 'loading-message';
+            messageDiv.textContent = '🤔 Thinking...';
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return messageDiv;
+        }
+
+        function removeLoadingMessage() {
+            const loadingMessage = document.getElementById('loading-message');
+            if (loadingMessage) {
+                loadingMessage.remove();
+            }
+        }
+
+        function setStatus(message, type = '') {
+            status.textContent = message;
+            status.className = `status ${type}`;
+        }
+
+        async function sendMessage() {
+            const query = userInput.value.trim();
+            if (!query) return;
+
+            // Disable input and button
+            sendButton.disabled = true;
+            userInput.disabled = true;
+            
+            // Add user message
+            addMessage(query, true);
+            userInput.value = '';
+            
+            // Add loading message
+            const loadingMessage = addLoadingMessage();
+            setStatus('Processing your question...', '');
+
+            try {
+                const response = await fetch('/api/chat/query', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ query: query })
+                });
+
+                const data = await response.json();
+                
+                removeLoadingMessage();
+                
+                if (data.success) {
+                    addMessage(data.response);
+                    setStatus('Response generated successfully!', 'success');
+                } else {
+                    addMessage(`❌ Error: ${data.error}`, false);
+                    setStatus(`Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                removeLoadingMessage();
+                addMessage(`❌ Connection error: ${error.message}`, false);
+                setStatus(`Connection error: ${error.message}`, 'error');
+            } finally {
+                // Re-enable input and button
+                sendButton.disabled = false;
+                userInput.disabled = false;
+                userInput.focus();
+            }
+        }
+
+        async function getStats() {
+            setStatus('Loading database statistics...', '');
+            
+            try {
+                const response = await fetch('/api/chat/stats');
+                const data = await response.json();
+                
+                if (data.success) {
+                    addMessage(data.stats);
+                    setStatus('Statistics loaded successfully!', 'success');
+                } else {
+                    addMessage(`❌ Error loading stats: ${data.error}`, false);
+                    setStatus(`Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                addMessage(`❌ Connection error: ${error.message}`, false);
+                setStatus(`Connection error: ${error.message}`, 'error');
+            }
+        }
+
+        // Check service health on page load
+        async function checkHealth() {
+            try {
+                const response = await fetch('/api/chat/health');
+                const data = await response.json();
+                
+                if (data.success) {
+                    setStatus('Chat service is online and ready!', 'success');
+                } else {
+                    setStatus('Chat service is experiencing issues', 'error');
+                }
+            } catch (error) {
+                setStatus('Unable to connect to chat service', 'error');
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            userInput.focus();
+            checkHealth();
+        });
+    </script>
+</body>
+</html> 
