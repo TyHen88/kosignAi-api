@@ -1,6 +1,7 @@
 package org.kosign.chatbotapi.repository;
 
 import org.kosign.chatbotapi.domains.PageContent;
+import org.kosign.chatbotapi.payload.IGetPageContents;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -52,4 +53,20 @@ public interface PageContentRepository extends JpaRepository<PageContent, Long> 
 
     // Get pages with specific status codes
     List<PageContent> findByStatus(Integer status);
+
+    @Query(value = """
+            SELECT p.id AS id,
+            p.url AS url,
+            p.title AS title,
+            p.content AS content,
+            TO_CHAR(p.updated_at, 'YYYY-MM-DD')  AS updatedAt 
+            FROM pages p 
+            WHERE p.status = '200'
+                 AND (
+                     unaccent(lower(p.title)) ILIKE unaccent(lower(CONCAT('%', :searchValue, '%')))
+                     OR unaccent(lower(p.content)) ILIKE unaccent(lower(CONCAT('%', :searchValue, '%')))
+                 )
+             ORDER BY p.id ASC
+            """, nativeQuery = true)
+    Page<IGetPageContents> findAllContentByStatus(String sort, @Param("searchValue") String searchValue, Pageable pageable);
 } 
