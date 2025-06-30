@@ -86,3 +86,44 @@ logging:
 
 server:
   port: 8099
+
+
+# Password Encryption
+password:
+  encryption:
+    key: mytestkeyasdddds
+
+# JWT Configuration
+jwt:
+  expiration: 86400000 # 24 hours in milliseconds
+  issuer: planpro-app
+  secret: mySecretKey
+  expirationMs: 86400000 # 24 hours in milliseconds
+
+# RSA Keys Configuration
+rsa:
+  public-key: classpath:certs/public-key.pem
+  private-key: classpath:certs/private-key.pem
+
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+    tags-sorter: alpha
+    disable-swagger-default-url: true
+    config-url: /v3/api-docs/swagger-config
+    urls:
+      - url: /v3/api-docs/public
+        name: Public API
+      - url: /v3/api-docs/authentication
+        name: Authentication API
+    display-request-duration: true
+    filter: true
+  api-docs:
+    path: /v3/api-docs
+  show-actuator: false
+  cache:
+    disabled: true
+  default-consumes-media-type: application/json
+  default-produces-media-type: application/json

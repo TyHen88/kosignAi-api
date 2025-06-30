@@ -90,7 +90,7 @@ public enum StatusCode {
     BILL_REQUEST(40101, "Please wait PPCB approve your requested.", 401),
     TRANSACTION_ALREADY_MATCH(40918, "Transaction already matched", 409 ),
     FOLDER_ALREADY_EXIST(40190, "Folder already exists", 400),
-
+    PASSWORD_MUST_MATCH(40102, "Password must match", 401),
 
     // 402 Payment Required
     BILL_REVIEW(40200, "Please wait PPCB approve your requested.", 402),
