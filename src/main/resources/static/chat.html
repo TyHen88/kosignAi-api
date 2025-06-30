@@ -360,7 +360,7 @@
             setStatus('Processing your question...', '');
 
             try {
-                const response = await fetch('/api/chat/query', {
+                const response = await fetch('/api/query', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -395,7 +395,7 @@
             setStatus('Loading database statistics...', '');
             
             try {
-                const response = await fetch('/api/chat/stats');
+                const response = await fetch('/api/stats');
                 const data = await response.json();
                 
                 if (data.success) {
@@ -414,7 +414,7 @@
         // Check service health on page load
         async function checkHealth() {
             try {
-                const response = await fetch('/api/chat/health');
+                const response = await fetch('/api/health');
                 const data = await response.json();
                 
                 if (data.success) {

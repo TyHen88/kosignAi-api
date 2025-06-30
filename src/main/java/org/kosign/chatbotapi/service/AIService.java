@@ -22,10 +22,12 @@ public class AIService {
 
     private static final Logger logger = LoggerFactory.getLogger(AIService.class);
 
-    @Value("${ai.google.api-key}")
+   // @Value("${ai.google.api-key}") //gemini api key
+    @Value("${chatgpt.api-key}") //chatgpt api key
     private String googleApiKey;
 
-    @Value("${ai.google.model:gemini-1.5-flash}")
+    //    @Value("${ai.google.model:gemini-1.5-flash}")
+    @Value("${chatgpt.model}")
     private String model;
 
     @Value("${ai.chat.system-prompt}")
@@ -58,6 +60,12 @@ public class AIService {
             // Clean and normalize the query
             String normalizedQuery = normalizeQuery(userQuery);
 
+            // Check for simple greetings and provide a direct, simple response.
+            if (isGreeting(normalizedQuery)) {
+                logger.info("Greeting detected. Bypassing full AI generation for a simple response.");
+                return "Hello! How can I assist you today?";
+            }
+
             // Extract smart keywords with intent recognition
             List<String> keywords = extractSmartKeywords(normalizedQuery);
             logger.debug("Extracted smart keywords: {}", keywords);
@@ -76,7 +84,7 @@ public class AIService {
             String context = buildEnhancedContext(relevantPages, userQuery);
 
             // Generate intelligent AI response
-            String aiResponse = generateIntelligentResponse(userQuery, context, relevantPages.isEmpty());
+            String aiResponse = generateSmartResponse(userQuery, context, relevantPages.isEmpty());
 
             logger.info("Successfully generated AI response for query: {}", userQuery);
             return aiResponse;
@@ -256,7 +264,8 @@ public class AIService {
         String enhancedPrompt = noSpecificData ? basePrompt + buildGeneralResponseInstructions()
                 : basePrompt + buildContextualResponseInstructions(context);
 
-        return callGeminiAPI(enhancedPrompt);
+//        return callGeminiAPI(enhancedPrompt);
+        return callOpenAIAPI(enhancedPrompt);
     }
 
     private String buildBasePrompt(String userQuery) {
@@ -365,7 +374,8 @@ public class AIService {
                     """, context));
         }
 
-        return callGeminiAPI(prompt.toString());
+//        return callGeminiAPI(prompt.toString());
+        return callOpenAIAPI(prompt.toString());
     }
 
     // Helper methods for query analysis
@@ -401,12 +411,36 @@ public class AIService {
                 .addFollowUpQuestions();
 
         if (noSpecificData) {
-            builder.addGeneralBankingInstructions();
+            // Use the new instructions for external search
+            builder.addExternalSearchInstructions();
         } else {
             builder.addContextualInstructions(context);
         }
 
-        return callGeminiAPI(builder.build());
+        return callOpenAIAPI(builder.build());
+    }
+    private boolean isGreeting(String normalizedQuery) {
+        // A set of common greetings.
+        final Set<String> greetings = Set.of(
+                "hi", "hello", "hey", "yo",
+                "good morning", "good afternoon", "good evening",
+                "greetings", "howdy"
+        );
+
+        // Check for an exact match from the set.
+        if (greetings.contains(normalizedQuery)) {
+            return true;
+        }
+
+        // Also check for short phrases that start with a greeting (e.g., "hello there").
+        // We limit this to 3 words to avoid catching complex questions like "hi, can you tell me about loans".
+        for (String greeting : greetings) {
+            if (normalizedQuery.startsWith(greeting) && normalizedQuery.split("\\s+").length <= 3) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static class PromptBuilder {
@@ -483,6 +517,18 @@ public class AIService {
                     """, context));
             return this;
         }
+        public PromptBuilder addExternalSearchInstructions() {
+            prompt.append("""
+                    INSTRUCTIONS:
+                    - The internal search for PPC Bank information did not return a specific answer.
+                    - Your task is to now act as a general, helpful AI assistant.
+                    - Use your broad knowledge and search capabilities to find the best possible answer to the user's question.
+                    - **Do NOT invent information about PPC Bank.**
+                    - If the user's question was about a general topic (e.g., "what is a loan?"), answer it comprehensively.
+                    - If the user's question was specifically about PPC Bank (e.g., "what are PPC Bank's car loan rates?"), you must state that you could not find specific information on the PPC Bank website, but you can provide general information on the topic. Then, provide that general information.
+                    """);
+            return this;
+        }
 
         public String build() {
             return prompt.toString();
@@ -513,7 +559,7 @@ public class AIService {
         boolean amountTable = lower.matches(".*(amount|fee|cost|minimum|maximum|limit|charge|price).*");
         return new QueryAnalysis(docTable, amountTable);
     }
-
+    //callGeminiAPI method
     private String callGeminiAPI(String prompt) throws IOException {
         // Escape the prompt properly for JSON
         String escapedPrompt = prompt.replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "");
@@ -569,6 +615,65 @@ public class AIService {
         }
     }
 
+    //callOpenAIAPI method
+    private String callOpenAIAPI(String prompt) throws IOException {
+        // Note: The variable name 'googleApiKey' is misleading here.
+        // It holds your OpenAI key as per your @Value("${chatgpt.api-key}") annotation.
+        // Consider renaming it to 'openAIApiKey' for better clarity.
+        String apiKey = googleApiKey;
+
+        // 1. Set the correct URL for OpenAI
+        String url = "https://api.openai.com/v1/chat/completions";
+
+        // 2. Build the request body in the format OpenAI expects
+        // We use a Map and ObjectMapper to create the JSON safely, avoiding manual escaping.
+        Map<String, Object> messageUser = new HashMap<>();
+        messageUser.put("role", "user");
+        messageUser.put("content", prompt);
+
+        List<Map<String, Object>> messages = new ArrayList<>();
+        messages.add(messageUser);
+
+        Map<String, Object> requestBodyMap = new HashMap<>();
+        requestBodyMap.put("model", model); // Uses the model from your application.properties
+        requestBodyMap.put("messages", messages);
+        // Optional: Add other parameters like temperature, max_tokens, etc.
+        // requestBodyMap.put("temperature", 0.7);
+        // requestBodyMap.put("max_tokens", 1500);
+
+        String requestBodyJson = objectMapper.writeValueAsString(requestBodyMap);
+
+        // 3. Build the request with the correct headers, including Authorization
+        Request request = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(MediaType.get("application/json"), requestBodyJson))
+                .addHeader("Content-Type", "application/json")
+                .addHeader("Authorization", "Bearer " + apiKey) // Crucial for OpenAI
+                .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            String responseBody = response.body().string();
+            if (!response.isSuccessful()) {
+                // Log the detailed error from the API for easier debugging
+                logger.error("OpenAI API error: {} - {}", response.code(), responseBody);
+                throw new IOException("OpenAI API error: " + response.code() + " - " + responseBody);
+            }
+
+            JsonNode jsonResponse = objectMapper.readTree(responseBody);
+
+            // 4. Parse the OpenAI response structure
+            JsonNode choices = jsonResponse.get("choices");
+            if (choices != null && choices.isArray() && choices.size() > 0) {
+                JsonNode message = choices.get(0).get("message");
+                if (message != null && message.has("content")) {
+                    return message.get("content").asText();
+                }
+            }
+
+            logger.warn("Could not extract content from OpenAI response: {}", responseBody);
+            return "I apologize, but I'm having trouble generating a response right now. Please try again or contact PPC Bank directly for assistance.";
+        }
+    }
     public String getDatabaseStats() {
         try {
             Long totalPages = pageContentRepository.getTotalPageCount();

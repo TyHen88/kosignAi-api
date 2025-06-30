@@ -8,9 +8,9 @@ spring:
         format_sql: true
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/web_scraper
+    url: jdbc:postgresql://192.168.178.239:5432/postgres
     username: postgres
-    password: 12345678
+    password: bizwebadmin123$
     driver-class-name: org.postgresql.Driver
 
   sql:
@@ -38,6 +38,12 @@ python:
     MAX_WORKERS: 5
 
 # AI Chatbot Configuration
+# API keys for chatgpt and google
+chatgpt:
+  api-key: ${OPENAI_API_KEY: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}
+  model: gpt-4o-mini
+  max-tokens: 1000
+  temperature: 0.7
 ai:
   google:
     api-key: ${GOOGLE_API_KEY:AIzaSyANzaDCKNkhff-FyhujH16soyJjAJVirIg}
@@ -77,3 +83,6 @@ logging:
     org.kosign.chatbotapi.service: DEBUG
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
+
+server:
+  port: 8099

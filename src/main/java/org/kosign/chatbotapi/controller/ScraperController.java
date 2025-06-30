@@ -6,7 +6,7 @@ import org.springframework.batch.core.*;
 import org.springframework.batch.core.launch.JobLauncher;
 
 @RestController
-@RequestMapping("/api/scraper")
+@RequestMapping("/api")
 public class ScraperController {
 
     @Autowired
@@ -16,7 +16,7 @@ public class ScraperController {
     @Qualifier("scrapingJob")
     private Job scrapingJob;
 
-    @PostMapping("/run")
+    @PostMapping("scraper/run")
     public String runScraper() {
         try {
             JobParameters params = new JobParametersBuilder()

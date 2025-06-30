@@ -13,13 +13,13 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/v1/page-content")
+@RequestMapping("/api")
 @RequiredArgsConstructor
 @CrossOrigin(origins = "*") // Allow CORS for frontend integration
 public class PageContentController extends ChatAIRestController {
     private final PageContentService pageContentService;
 
-    @GetMapping
+    @GetMapping("/page-contents")
     public Object getPageContent(
             @RequestParam(name = "search_value", required = false) String searchValue,
             @RequestParam(name = "page_number", defaultValue = "0") Integer pageNumber,

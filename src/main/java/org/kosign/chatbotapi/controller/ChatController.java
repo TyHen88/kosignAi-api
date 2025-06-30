@@ -11,7 +11,7 @@ import java.util.HashMap;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/chat")
+@RequestMapping("/api")
 @CrossOrigin(origins = "*") // Allow CORS for frontend integration
 public class ChatController {
 

@@ -36,4 +36,7 @@ CREATE TABLE IF NOT EXISTS page_versions (
 CREATE INDEX IF NOT EXISTS idx_pages_url ON pages(url);
 CREATE INDEX IF NOT EXISTS idx_pages_content_hash ON pages(content_hash);
 CREATE INDEX IF NOT EXISTS idx_broken_links_url ON broken_links(url);
-CREATE INDEX IF NOT EXISTS idx_page_versions_page_id ON page_versions(page_id); 
+CREATE INDEX IF NOT EXISTS idx_page_versions_page_id ON page_versions(page_id);
+
+-- Create function unaccent
+CREATE EXTENSION IF NOT EXISTS unaccent;
