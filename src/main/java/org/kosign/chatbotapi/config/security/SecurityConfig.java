@@ -80,7 +80,7 @@ public class SecurityConfig {
                                 "/swagger.json",
                                 "/swagger-ui/**",
                                 "/swagger-ui/index.html",
-                                "/api/**",
+                                "/api/query",
                                 "/**"
                         ).permitAll()
                         .requestMatchers(

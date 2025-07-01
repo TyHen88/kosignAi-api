@@ -3,8 +3,8 @@ package org.kosign.chatbotapi.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
-import org.kosign.chatbotapi.domains.PageContent;
-import org.kosign.chatbotapi.repository.PageContentRepository;
+import org.kosign.chatbotapi.domains.PPCBank;
+import org.kosign.chatbotapi.repository.PPCBankContentRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -14,7 +14,6 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -34,7 +33,7 @@ public class AIService {
     private String systemPrompt;
 
     @Autowired
-    private PageContentRepository pageContentRepository;
+    private PPCBankContentRepository pageContentRepository;
 
     private final OkHttpClient httpClient = new OkHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
@@ -71,7 +70,7 @@ public class AIService {
             logger.debug("Extracted smart keywords: {}", keywords);
 
             // Perform intelligent search
-            List<PageContent> relevantPages = performIntelligentSearch(keywords, normalizedQuery);
+            List<PPCBank> relevantPages = performIntelligentSearch(keywords, normalizedQuery);
             logger.debug("Found {} relevant pages", relevantPages.size());
 
             // If no specific results, try broader search
@@ -145,11 +144,11 @@ public class AIService {
         return new ArrayList<>(keywords);
     }
 
-    private List<PageContent> performIntelligentSearch(List<String> keywords, String originalQuery) {
-        Set<PageContent> allResults = new LinkedHashSet<>();
+    private List<PPCBank> performIntelligentSearch(List<String> keywords, String originalQuery) {
+        Set<PPCBank> allResults = new LinkedHashSet<>();
 
         // 1. Exact phrase search first
-        List<PageContent> exactResults = pageContentRepository.findByContentContainingIgnoreCase(originalQuery);
+        List<PPCBank> exactResults = pageContentRepository.findByContentContainingIgnoreCase(originalQuery);
         allResults.addAll(exactResults);
 
         // 2. Multi-keyword search
@@ -157,16 +156,16 @@ public class AIService {
             String keyword1 = keywords.size() > 0 ? keywords.get(0) : null;
             String keyword2 = keywords.size() > 1 ? keywords.get(1) : null;
             String keyword3 = keywords.size() > 2 ? keywords.get(2) : null;
-            List<PageContent> multiResults = pageContentRepository.findByMultipleKeywords(keyword1, keyword2, keyword3);
+            List<PPCBank> multiResults = pageContentRepository.findByMultipleKeywords(keyword1, keyword2, keyword3);
             allResults.addAll(multiResults);
         }
 
         // 3. Individual keyword search with relevance scoring
-        Map<PageContent, Integer> relevanceScore = new HashMap<>();
+        Map<PPCBank, Integer> relevanceScore = new HashMap<>();
 
         for (String keyword : keywords) {
-            List<PageContent> keywordResults = pageContentRepository.findByTitleOrContentContainingIgnoreCase(keyword);
-            for (PageContent page : keywordResults) {
+            List<PPCBank> keywordResults = pageContentRepository.findByTitleOrContentContainingIgnoreCase(keyword);
+            for (PPCBank page : keywordResults) {
                 relevanceScore.put(page, relevanceScore.getOrDefault(page, 0) + 1);
                 allResults.add(page);
             }
@@ -181,12 +180,12 @@ public class AIService {
                 .collect(Collectors.toList());
     }
 
-    private List<PageContent> performBroaderSearch(String query) {
+    private List<PPCBank> performBroaderSearch(String query) {
         // If no specific results, try to find any banking-related content
         List<String> generalTerms = Arrays.asList("bank", "service", "account", "payment", "loan", "card");
 
         for (String term : generalTerms) {
-            List<PageContent> results = pageContentRepository.findByTitleOrContentContainingIgnoreCase(term);
+            List<PPCBank> results = pageContentRepository.findByTitleOrContentContainingIgnoreCase(term);
             if (!results.isEmpty()) {
                 return results.stream().limit(5).collect(Collectors.toList());
             }
@@ -196,7 +195,7 @@ public class AIService {
         return pageContentRepository.findRecentPages(PageRequest.of(0, 5)).getContent();
     }
 
-    private String buildEnhancedContext(List<PageContent> pages, String userQuery) {
+    private String buildEnhancedContext(List<PPCBank> pages, String userQuery) {
         if (pages.isEmpty()) {
             return "While I don't have specific information about your exact query, I can help you with general banking information from PPC Bank.";
         }
@@ -205,7 +204,7 @@ public class AIService {
         context.append("Based on information from PPC Bank's website, here's what I found:\n\n");
 
         for (int i = 0; i < Math.min(pages.size(), 5); i++) {
-            PageContent page = pages.get(i);
+            PPCBank page = pages.get(i);
             context.append(String.format("**Source %d: %s**\n", i + 1,
                     page.getTitle() != null ? page.getTitle() : "PPC Bank Information"));
 
@@ -677,7 +676,7 @@ public class AIService {
     public String getDatabaseStats() {
         try {
             Long totalPages = pageContentRepository.getTotalPageCount();
-            List<PageContent> recentPages = pageContentRepository.findRecentPages(PageRequest.of(0, 5)).getContent();
+            List<PPCBank> recentPages = pageContentRepository.findRecentPages(PageRequest.of(0, 5)).getContent();
 
             StringBuilder stats = new StringBuilder();
             stats.append(String.format("📊 **PPC Bank Information Database**\n\n"));
@@ -686,7 +685,7 @@ public class AIService {
 
             if (!recentPages.isEmpty()) {
                 stats.append("**Recent content:**\n");
-                for (PageContent page : recentPages) {
+                for (PPCBank page : recentPages) {
                     stats.append(String.format("• %s\n",
                             page.getTitle() != null ? page.getTitle() : page.getUrl()));
                 }

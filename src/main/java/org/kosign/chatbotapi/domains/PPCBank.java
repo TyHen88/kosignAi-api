@@ -1,6 +1,5 @@
 package org.kosign.chatbotapi.domains;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -10,16 +9,14 @@ import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
 
 @Entity
-@Table(name = "pages")
+@Table(name = "tb_ppc_bank")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PageContent {
+public class PPCBank {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
@@ -36,14 +33,16 @@ public class PageContent {
     private Integer status;
     private Integer depth;
 
+    @Column(columnDefinition = "TEXT")
+    private String error;
+
+    @Column(columnDefinition = "JSONB")
+    private String tables;
+
     @CreationTimestamp
     private LocalDateTime createdAt;
 
     @UpdateTimestamp
     private LocalDateTime updatedAt;
-
-    @OneToMany(mappedBy = "page", cascade = CascadeType.ALL)
-    @JsonIgnore
-    private List<PageVersion> versions = new ArrayList<>();
 
 }

@@ -1,5 +1,6 @@
 package org.kosign.chatbotapi;
 
+import org.kosign.chatbotapi.utils.PasswordUtils;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.ConfigurationPropertiesScan;

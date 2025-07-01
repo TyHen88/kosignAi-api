@@ -43,11 +43,16 @@ class SpringIntegratedScraper:
         """Initialize PostgreSQL database connection"""
         try:
             self.conn = psycopg2.connect(
-                dbname=os.getenv('DB_NAME', 'postgres'),
+                # dbname=os.getenv('DB_NAME', 'postgres'),
+                # user=os.getenv('DB_USER', 'postgres'),
+                # password=os.getenv('DB_PASSWORD', 'bizwebadmin123$'),
+                # host=os.getenv('DB_HOST', '192.168.178.239'),
+                # port=os.getenv('DB_PORT', '5432')
+                dbname=os.getenv('DB_NAME', 'web_scraper'),
                 user=os.getenv('DB_USER', 'postgres'),
-                password=os.getenv('DB_PASSWORD', 'bizwebadmin123$'),
-                host=os.getenv('DB_HOST', '192.168.178.239'),
-                port=os.getenv('DB_PORT', '5432')
+                password=os.getenv('DB_PASSWORD', '12345678'),
+                host=os.getenv('DB_HOST', 'localhost'),
+                port=os.getenv('DB_PORT', '5433')
             )
             print("Successfully connected to PostgreSQL database")
         except psycopg2.Error as e:
@@ -64,21 +69,6 @@ class SpringIntegratedScraper:
         except:
             return False
 
-    def _store_broken_link(self, url, error):
-        """Store broken link information in database"""
-        try:
-            with self.conn.cursor() as cursor:
-                cursor.execute("""
-                               INSERT INTO broken_links (url, error)
-                               VALUES (%s, %s)
-                               """, (url, error))
-                self.conn.commit()
-                print(f"Broken link stored: {url} - {error}")
-                self.broken_links.append({'url': url, 'error': error})
-        except psycopg2.Error as e:
-            print(f"Error storing broken link: {e}")
-            self.conn.rollback()
-
     def _calculate_content_hash(self, content):
         """Calculate MD5 hash of content for change detection"""
         return hashlib.md5(content.encode('utf-8')).hexdigest()
@@ -89,8 +79,8 @@ class SpringIntegratedScraper:
             with self.conn.cursor() as cursor:
                 cursor.execute("""
                                INSERT INTO page_versions (
-                                   page_id, url, title, content, content_hash, status, depth
-                               ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                                   page_id, url, title, content, content_hash, status, depth, error
+                               ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                                """, (
                                    page_id,
                                    page_data['url'],
@@ -98,7 +88,8 @@ class SpringIntegratedScraper:
                                    page_data['content'],
                                    page_data['content_hash'],
                                    page_data['status'],
-                                   page_data['depth']
+                                   page_data['depth'],
+                                   page_data.get('error')
                                ))
                 self.conn.commit()
                 print(f"Stored version history for page ID: {page_id}")
@@ -107,134 +98,190 @@ class SpringIntegratedScraper:
             self.conn.rollback()
 
     def store_page(self, page_data):
-        """Store page data in format compatible with Spring Data JPA"""
+        """Store page data including table content in tb_ppc_bank table"""
         try:
             with self.conn.cursor() as cursor:
                 # Check if page exists
-                cursor.execute("SELECT id, content_hash FROM pages WHERE url = %s", (page_data['url'],))
+                cursor.execute(
+                    "SELECT id, content_hash FROM tb_ppc_bank WHERE url = %s",
+                    (page_data['url'],)
+                )
                 existing_page = cursor.fetchone()
+
+                # Prepare common parameters
+                params = {
+                    'url': page_data['url'],
+                    'title': page_data['title'],
+                    'content': page_data['content'],
+                    'content_hash': page_data['content_hash'],
+                    'status': page_data['status'],
+                    'depth': page_data['depth'],
+                    'error': page_data.get('error'),
+                    'tables': page_data.get('tables', json.dumps([]))  # Default empty array if not provided
+                }
 
                 if existing_page:
                     page_id, current_hash = existing_page
-                    if current_hash == page_data['content_hash']:
-                        # Update timestamp only
+                    if current_hash == params['content_hash'] and not params['error']:
+                        # Update timestamp only if content hasn't changed
                         cursor.execute("""
-                                       UPDATE pages
+                                       UPDATE tb_ppc_bank
                                        SET updated_at = CURRENT_TIMESTAMP
                                        WHERE id = %s
                                        """, (page_id,))
                         self.conn.commit()
-                        print(f"Page timestamp updated: {page_data['url']}")
+                        print(f"Page timestamp updated: {params['url']}")
                         return False
                     else:
-                        # Get current version before updating
+                        # Update all fields including tables
                         cursor.execute("""
-                                       SELECT url, title, content, content_hash, status, depth
-                                       FROM pages
+                                       UPDATE tb_ppc_bank
+                                       SET title = %(title)s,
+                                           content = %(content)s,
+                                           content_hash = %(content_hash)s,
+                                           status = %(status)s,
+                                           depth = %(depth)s,
+                                           error = %(error)s,
+                                           tables = %(tables)s::jsonb,
+                                updated_at = CURRENT_TIMESTAMP
                                        WHERE id = %s
-                                       """, (page_id,))
-                        old_version = cursor.fetchone()
-
-                        # Store old version
-                        self._store_page_version(page_id, {
-                            'url': old_version[0],
-                            'title': old_version[1],
-                            'content': old_version[2],
-                            'content_hash': old_version[3],
-                            'status': old_version[4],
-                            'depth': old_version[5]
-                        })
-
-                        # Update current page
-                        cursor.execute("""
-                                       UPDATE pages
-                                       SET title = %s,
-                                           content = %s,
-                                           content_hash = %s,
-                                           status = %s,
-                                           depth = %s,
-                                           updated_at = CURRENT_TIMESTAMP
-                                       WHERE id = %s
-                                       """, (
-                                           page_data['title'],
-                                           page_data['content'],
-                                           page_data['content_hash'],
-                                           page_data['status'],
-                                           page_data['depth'],
-                                           page_id
-                                       ))
+                                       """, {**params, 'id': page_id})
                         self.conn.commit()
-                        print(f"Page updated: {page_data['url']}")
+                        print(f"Page updated: {params['url']}")
                         return True
                 else:
-                    # Insert new page
+                    # Insert new page with all fields including tables
                     cursor.execute("""
-                                   INSERT INTO pages (
-                                       url, title, content, content_hash, status, depth
-                                   ) VALUES (%s, %s, %s, %s, %s, %s)
+                                   INSERT INTO tb_ppc_bank (
+                                       url, title, content, content_hash,
+                                       status, depth, error, tables
+                                   ) VALUES (
+                                                %(url)s, %(title)s, %(content)s, %(content_hash)s,
+                                                %(status)s, %(depth)s, %(error)s, %(tables)s::jsonb
+                                            )
                                        RETURNING id
-                                   """, (
-                                       page_data['url'],
-                                       page_data['title'],
-                                       page_data['content'],
-                                       page_data['content_hash'],
-                                       page_data['status'],
-                                       page_data['depth']
-                                   ))
+                                   """, params)
                     page_id = cursor.fetchone()[0]
                     self.conn.commit()
-                    print(f"New page stored: {page_data['url']} (ID: {page_id})")
+                    print(f"New page stored: {params['url']} (ID: {page_id})")
                     return True
+
         except psycopg2.Error as e:
-            print(f"Error storing page: {e}")
+            print(f"Database error storing page {page_data['url']}: {e}")
             self.conn.rollback()
             return False
+        except Exception as e:
+            print(f"Unexpected error storing page {page_data['url']}: {e}")
+            self.conn.rollback()
+            return False
+    def extract_table_data(self, soup):
+        """Extract and structure data from HTML tables with improved logic"""
+        tables_data = []
+
+        for table in soup.find_all('table'):
+            table_data = {
+                'caption': table.find('caption').get_text(strip=True) if table.find('caption') else None,
+                'headers': [],
+                'rows': [],
+                'table_attributes': dict(table.attrs)
+            }
+
+            # Extract headers - look for th in thead first, then fall back to th in table
+            header_row = table.find('thead')
+            if header_row:
+                headers = [th.get_text(strip=True) for th in header_row.find_all('th')]
+            else:
+                headers = [th.get_text(strip=True) for th in table.find_all('th', recursive=False)]
+
+            table_data['headers'] = headers if headers else []
+
+            # Extract table body rows
+            tbody = table.find('tbody') or table  # Fall back to table if no tbody
+            for row in tbody.find_all('tr', recursive=False):  # Only direct children
+                cells = []
+                for cell in row.find_all(['td', 'th'], recursive=False):  # Only direct children
+                    cell_text = cell.get_text(' ', strip=True)  # Preserve some whitespace
+                    cell_data = {
+                        'text': cell_text,
+                        'attributes': dict(cell.attrs),
+                        'colspan': int(cell.get('colspan', 1)),
+                        'rowspan': int(cell.get('rowspan', 1))
+                    }
+                    cells.append(cell_data)
+
+                if cells:  # Only add rows with cells
+                    row_data = {
+                        'cells': cells,
+                        'row_attributes': dict(row.attrs)
+                    }
+                    table_data['rows'].append(row_data)
+
+            tables_data.append(table_data)
+
+        return tables_data
 
     def scrape_page(self, url, depth=0):
-        """Scrape individual page with change detection"""
+        """Scrape individual page with proper table handling and error management"""
         if depth > self.max_depth or url in self.visited:
             return
 
         self.visited.add(url)
         sleep(self.crawl_delay)
 
+        # Initialize page data with default values
+        page_data = {
+            'url': url,
+            'title': None,
+            'content': None,
+            'content_hash': None,
+            'status': None,
+            'depth': depth,
+            'error': None,
+            'tables': None
+        }
+
         try:
             response = self.session.get(url, timeout=10)
+            page_data['status'] = response.status_code
             response.raise_for_status()
 
             if 'text/html' not in response.headers.get('Content-Type', ''):
-                self._store_broken_link(url, 'Non-HTML content')
-                return
+                raise ValueError(f"Non-HTML content (Content-Type: {response.headers.get('Content-Type')})")
 
             soup = BeautifulSoup(response.text, 'html.parser')
 
-            # Remove unwanted elements
+            # Remove unwanted elements (keeping tables)
             for selector in ['script', 'style', 'iframe', 'nav', 'footer',
                              '[class*="cookie"]', '[id*="cookie"]']:
                 for element in soup.select(selector):
                     element.decompose()
 
-            # Get content
-            content = ' '.join([text for text in soup.stripped_strings if len(text.split()) > 1])
-            if len(content) > self.max_content_length:
-                content = content[:self.max_content_length] + '... [CONTENT TRUNCATED]'
+            # Extract all text content (including from tables)
+            all_text = ' '.join([text for text in soup.stripped_strings])
+            if len(all_text) > self.max_content_length:
+                all_text = all_text[:self.max_content_length] + '... [CONTENT TRUNCATED]'
 
-            content_hash = self._calculate_content_hash(content)
+            # Extract structured table data
+            tables_data = self.extract_table_data(soup)
 
-            page_data = {
-                'url': url,
-                'title': soup.title.string if soup.title else None,
-                'content': content,
-                'content_hash': content_hash,
-                'status': response.status_code,
-                'depth': depth
+            # Create comprehensive page data
+            structured_content = {
+                'text_content': all_text,
+                'tables': tables_data
             }
 
-            # Store page
-            was_updated = self.store_page(page_data)
+            page_data.update({
+                'title': soup.title.string.strip() if soup.title and soup.title.string else 'No Title',
+                'content': json.dumps(structured_content),
+                'content_hash': self._calculate_content_hash(json.dumps(structured_content)),
+                'tables': json.dumps(tables_data)
+            })
+
+            # Store the page
+            self.store_page(page_data)
             self.valid_pages.append(page_data)
 
-            # Extract and follow links
+            # Extract and follow links (only on successful scrape)
             if depth < self.max_depth:
                 links = set()
                 for link in soup.find_all('a', href=True):
@@ -246,15 +293,25 @@ class SpringIntegratedScraper:
                     if self.is_valid_url(new_url) and new_url not in self.visited:
                         links.add(new_url)
 
-                # Process links concurrently
-                with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-                    futures = [executor.submit(self.scrape_page, link, depth + 1) for link in links]
-                    concurrent.futures.wait(futures)
+                # Process links concurrently if any were found
+                if links:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+                        futures = [executor.submit(self.scrape_page, link, depth + 1) for link in links]
+                        concurrent.futures.wait(futures)
 
-        except requests.exceptions.RequestException as e:
-            self._store_broken_link(url, f"Request failed: {str(e)}")
         except Exception as e:
-            self._store_broken_link(url, f"Scraping failed: {str(e)}")
+            error_msg = f"{type(e).__name__}: {str(e)}"
+            page_data.update({
+                'content': error_msg,
+                'content_hash': self._calculate_content_hash(error_msg),
+                'error': error_msg,
+                'tables': json.dumps([])  # Empty tables array for error case
+            })
+            if page_data['status'] is None:
+                page_data['status'] = 500  # Default error status
+
+            self.broken_links.append(page_data)
+            self.store_page(page_data)
 
     def crawl_site(self, force_update=False):
         """Start crawling with option to force update all pages"""
@@ -288,7 +345,6 @@ class SpringIntegratedScraper:
             print(f"Error during cleanup: {e}")
 
 def main():
-
     parser = argparse.ArgumentParser(description='Website scraper integrated with Spring Boot')
     parser.add_argument('--spring-data-mode', action='store_true',
                         help='Run in Spring Data integration mode')
