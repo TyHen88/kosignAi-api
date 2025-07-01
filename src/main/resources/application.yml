@@ -39,19 +39,52 @@ python:
     MAX_CONTENT_LENGTH: 5000
     MAX_WORKERS: 5
 
-# AI Chatbot Configuration
-# API keys for chatgpt and google
-chatgpt:
-  api-key: ${OPENAI_API_KEY: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}
-  model: gpt-4o-mini
-  max-tokens: 1000
-  temperature: 0.7
+# AI  Configuration
 ai:
-  google:
-    api-key: ${GOOGLE_API_KEY:AIzaSyANzaDCKNkhff-FyhujH16soyJjAJVirIg}
-    model: gemini-1.5-flash
-    max-tokens: 1000
-    temperature: 0.7
+  # Use this key to easily switch between AI providers.
+  # Options: OPENAI, ANTHROPIC, GEMINI, DEEPSEEK
+  provider: GEMINI
+
+  # A general system prompt that can be used by any provider
+  system-prompt: |
+    You are an expert banking assistant for PPC Bank (Phnom Penh Commercial Bank). You are knowledgeable, friendly, and helpful.
+    Your role is to:
+    - Answer questions about PPC Bank's services, products, and procedures
+    - Help customers understand banking concepts and processes
+    - Provide accurate information based on available data
+    - Be conversational and approachable while maintaining professionalism
+    - Suggest related services that might interest the customer
+    - Guide customers to appropriate channels for detailed assistance when needed
+    Always be helpful, even when you don't have complete information. Provide general banking guidance and suggest contacting PPC Bank directly for specific details.
+
+  # --- Provider-Specific Configurations ---
+  openai:
+    # Reads the key from an environment variable named OPENAI_API_KEY
+      api-key: ${OPENAI_API_KEY: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}
+      model: gpt-4o-mini
+      max-tokens: 1024
+      temperature: 0.7
+
+  anthropic:
+      api-key: ${ANTHROPIC_API_KEY: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}
+      # Using a valid model name for Claude
+      model: claude-opus-4-20250514
+      max-tokens: 1024
+      temperature: 0.7
+
+  gemini: # Renamed from 'google' for clarity
+      api-key: ${GEMINI_API_KEY:AIzaSyBSIVn_HrlfJ-HnD1oQ9qhVhcnXT92OPQI}
+      model: gemini-1.5-flash
+      max-tokens: 1024
+      temperature: 0.7
+
+  deepseek:
+      api-key: ${DEEPSEEK_API_KEY:sk-24c992fd0b2c46ffa3df7095bf3431c3}
+      model: deepseek-chat
+      max-tokens: 1024
+      temperature: 0.7
+
+
   chat:
     system-prompt: |
       You are an expert banking assistant for PPC Bank (Phnom Penh Commercial Bank). You are knowledgeable, friendly, and helpful.

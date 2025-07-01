@@ -21,16 +21,41 @@ public class AIService {
 
     private static final Logger logger = LoggerFactory.getLogger(AIService.class);
 
-   // @Value("${ai.google.api-key}") //gemini api key
-    @Value("${chatgpt.api-key}") //chatgpt api key
-    private String googleApiKey;
+    private enum AiProvider {
+        OPENAI,
+        GEMINI,
+        ANTHROPIC,
+        DEEPSEEK
+    }
 
-    //    @Value("${ai.google.model:gemini-1.5-flash}")
-    @Value("${chatgpt.model}")
-    private String model;
+    // --- Configuration Properties ---
 
-    @Value("${ai.chat.system-prompt}")
-    private String systemPrompt;
+    @Value("${ai.provider}")
+    private AiProvider activeProvider;
+
+    @Value("${ai.openai.api-key}")
+    private String openAIApiKey;
+
+    @Value("${ai.openai.model}")
+    private String openAIModel;
+
+    @Value("${ai.gemini.api-key}")
+    private String geminiApiKey;
+
+    @Value("${ai.gemini.model}")
+    private String geminiModel;
+
+    @Value("${ai.anthropic.api-key}")
+    private String anthropicApiKey;
+
+    @Value("${ai.anthropic.model}")
+    private String anthropicModel;
+
+    @Value("${ai.deepseek.api-key}")
+    private String deepSeekApiKey;
+
+    @Value("${ai.deepseek.model}")
+    private String deepSeekModel;
 
     @Autowired
     private PPCBankContentRepository pageContentRepository;
@@ -263,8 +288,8 @@ public class AIService {
         String enhancedPrompt = noSpecificData ? basePrompt + buildGeneralResponseInstructions()
                 : basePrompt + buildContextualResponseInstructions(context);
 
-//        return callGeminiAPI(enhancedPrompt);
-        return callOpenAIAPI(enhancedPrompt);
+        return callAiService(enhancedPrompt);
+//        return callOpenAIAPI(enhancedPrompt);
     }
 
     private String buildBasePrompt(String userQuery) {
@@ -373,8 +398,8 @@ public class AIService {
                     """, context));
         }
 
-//        return callGeminiAPI(prompt.toString());
-        return callOpenAIAPI(prompt.toString());
+        return callAiService(prompt.toString());
+//        return callOpenAIAPI(prompt.toString());
     }
 
     // Helper methods for query analysis
@@ -416,7 +441,8 @@ public class AIService {
             builder.addContextualInstructions(context);
         }
 
-        return callOpenAIAPI(builder.build());
+//        return callOpenAIAPI(builder.build());
+        return callAiService(builder.build());
     }
     private boolean isGreeting(String normalizedQuery) {
         // A set of common greetings.
@@ -558,6 +584,26 @@ public class AIService {
         boolean amountTable = lower.matches(".*(amount|fee|cost|minimum|maximum|limit|charge|price).*");
         return new QueryAnalysis(docTable, amountTable);
     }
+
+    /**
+     * Central dispatcher that routes the request to the configured AI provider.
+     */
+    private String callAiService(String prompt) throws IOException {
+        logger.info("Routing AI request to provider: {}", activeProvider);
+        switch (activeProvider) {
+            case OPENAI:
+                return callOpenAIAPI(prompt);
+            case GEMINI:
+                return callGeminiAPI(prompt);
+            case ANTHROPIC:
+                return callClaudeAPI(prompt);
+            case DEEPSEEK:
+                return callDeepSeekAPI(prompt);
+            default:
+                logger.error("Unsupported AI provider configured: {}", activeProvider);
+                throw new IllegalStateException("Unsupported AI provider: " + activeProvider);
+        }
+    }
     //callGeminiAPI method
     private String callGeminiAPI(String prompt) throws IOException {
         // Escape the prompt properly for JSON
@@ -580,7 +626,7 @@ public class AIService {
                 """, escapedPrompt);
 
         String url = String.format("https://generativelanguage.googleapis.com/v1beta/models/%s:generateContent?key=%s",
-                model, googleApiKey);
+                geminiModel, geminiApiKey);
 
         Request request = new Request.Builder()
                 .url(url)
@@ -619,7 +665,7 @@ public class AIService {
         // Note: The variable name 'googleApiKey' is misleading here.
         // It holds your OpenAI key as per your @Value("${chatgpt.api-key}") annotation.
         // Consider renaming it to 'openAIApiKey' for better clarity.
-        String apiKey = googleApiKey;
+        String apiKey = openAIApiKey;
 
         // 1. Set the correct URL for OpenAI
         String url = "https://api.openai.com/v1/chat/completions";
@@ -634,7 +680,7 @@ public class AIService {
         messages.add(messageUser);
 
         Map<String, Object> requestBodyMap = new HashMap<>();
-        requestBodyMap.put("model", model); // Uses the model from your application.properties
+        requestBodyMap.put("model", openAIModel); // Uses the model from your application.properties
         requestBodyMap.put("messages", messages);
         // Optional: Add other parameters like temperature, max_tokens, etc.
         // requestBodyMap.put("temperature", 0.7);
@@ -671,6 +717,90 @@ public class AIService {
 
             logger.warn("Could not extract content from OpenAI response: {}", responseBody);
             return "I apologize, but I'm having trouble generating a response right now. Please try again or contact PPC Bank directly for assistance.";
+        }
+    }
+
+    private String callClaudeAPI(String prompt) throws IOException {
+        // 1. Set the correct URL and required headers for Anthropic
+        String url = "https://api.anthropic.com/v1/messages";
+        String anthropicVersion = "2023-06-01";
+
+        // 2. Build the request body in the format Claude expects
+        // Note: Claude can take a system prompt, but it's a top-level parameter, not in the messages array.
+        // For simplicity and alignment with the curl command, we'll stick to the user message.
+        Map<String, Object> userMessage = new HashMap<>();
+        userMessage.put("role", "user");
+        userMessage.put("content", prompt);
+
+        List<Map<String, Object>> messages = List.of(userMessage);
+
+        Map<String, Object> requestBodyMap = new HashMap<>();
+        requestBodyMap.put("model", anthropicModel);
+        requestBodyMap.put("messages", messages);
+        requestBodyMap.put("max_tokens", 1024); // This is a required parameter for Claude
+
+        String requestBodyJson = objectMapper.writeValueAsString(requestBodyMap);
+
+        // 3. Build the request with the correct headers for Anthropic
+        Request request = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(MediaType.get("application/json"), requestBodyJson))
+                .addHeader("x-api-key", anthropicApiKey) // Correct header for authentication
+                .addHeader("anthropic-version", anthropicVersion) // Required version header
+                .addHeader("Content-Type", "application/json")
+                .build();
+
+        // 4. The 'executeRequest' method in your full file context is a great pattern.
+        // We can call it here to handle the response.
+        return executeRequest(request, "Claude");
+    }
+
+    private String callDeepSeekAPI(String prompt) throws IOException {
+        String url = "https://api.deepseek.com/chat/completions";
+
+        Map<String, Object> systemMessage = Map.of("role", "system", "content", "You are a helpful AI assistant for PPC Bank.");
+        Map<String, Object> userMessage = Map.of("role", "user", "content", prompt);
+
+        Map<String, Object> requestBodyMap = new HashMap<>();
+        requestBodyMap.put("model", deepSeekModel);
+        requestBodyMap.put("messages", List.of(systemMessage, userMessage));
+        requestBodyMap.put("stream", false);
+
+        String requestBodyJson = objectMapper.writeValueAsString(requestBodyMap);
+
+        Request request = new Request.Builder()
+                .url(url)
+                .post(RequestBody.create(MediaType.get("application/json"), requestBodyJson))
+                .addHeader("Authorization", "Bearer " + deepSeekApiKey)
+                .build();
+
+        return executeRequest(request, "DeepSeek");
+    }
+    private String executeRequest(Request request, String providerName) throws IOException {
+        try (Response response = httpClient.newCall(request).execute()) {
+            String responseBody = response.body().string();
+            if (!response.isSuccessful()) {
+                logger.error("{} API error: {} - {}", providerName, response.code(), responseBody);
+                throw new IOException(providerName + " API error: " + response.code() + " - " + responseBody);
+            }
+
+            JsonNode jsonResponse = objectMapper.readTree(responseBody);
+
+            // Handle Claude's unique response structure
+            if ("Claude".equals(providerName)) {
+                JsonNode contentArray = jsonResponse.path("content");
+                if (contentArray.isArray() && !contentArray.isEmpty()) {
+                    return contentArray.get(0).path("text").asText();
+                }
+            } else { // Handle OpenAI, DeepSeek, and other similar structures
+                JsonNode choices = jsonResponse.path("choices");
+                if (choices.isArray() && !choices.isEmpty()) {
+                    return choices.get(0).path("message").path("content").asText();
+                }
+            }
+
+            logger.warn("Could not extract content from {} response: {}", providerName, responseBody);
+            return "I apologize, but I'm having trouble generating a response right now.";
         }
     }
     public String getDatabaseStats() {
