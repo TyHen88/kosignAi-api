@@ -69,29 +69,7 @@ class SpringIntegratedScraper:
         """Calculate MD5 hash of content for change detection"""
         return hashlib.md5(content.encode('utf-8')).hexdigest()
 
-    def _store_page_version(self, page_id, page_data):
-        """Store version history"""
-        try:
-            with self.conn.cursor() as cursor:
-                cursor.execute("""
-                               INSERT INTO page_versions (
-                                   page_id, url, title, content, content_hash, status, depth, error
-                               ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
-                               """, (
-                                   page_id,
-                                   page_data['url'],
-                                   page_data['title'],
-                                   page_data['content'],
-                                   page_data['content_hash'],
-                                   page_data['status'],
-                                   page_data['depth'],
-                                   page_data.get('error')
-                               ))
-                self.conn.commit()
-                print(f"Stored version history for page ID: {page_id}")
-        except psycopg2.Error as e:
-            print(f"Error storing page version: {e}")
-            self.conn.rollback()
+    
 
     def store_page(self, page_data):
         """Store page data including table content in tb_ppc_bank table"""
@@ -157,10 +135,15 @@ class SpringIntegratedScraper:
                                             )
                                        RETURNING id
                                    """, params)
-                    page_id = cursor.fetchone()[0]
-                    self.conn.commit()
-                    print(f"New page stored: {params['url']} (ID: {page_id})")
-                    return True
+                    result = cursor.fetchone()
+                    if result:
+                        page_id = result[0]
+                        self.conn.commit()
+                        print(f"New page stored: {params['url']} (ID: {page_id})")
+                        return True
+                    else:
+                        print(f"Failed to insert page: {params['url']}")
+                        return False
 
         except psycopg2.Error as e:
             print(f"Database error storing page {page_data['url']}: {e}")
@@ -170,6 +153,7 @@ class SpringIntegratedScraper:
             print(f"Unexpected error storing page {page_data['url']}: {e}")
             self.conn.rollback()
             return False
+            
     def extract_table_data(self, soup):
         """Extract and structure data from HTML tables with improved logic"""
         tables_data = []
@@ -281,7 +265,16 @@ class SpringIntegratedScraper:
             if depth < self.max_depth:
                 links = set()
                 for link in soup.find_all('a', href=True):
-                    href = link['href']
+                    # Direct attribute access - BeautifulSoup handles this safely
+                    try:
+                        href = link['href']
+                        if isinstance(href, list):
+                            href = href[0] if href else None
+                        else:
+                            href = str(href)
+                    except (KeyError, TypeError):
+                        continue
+                    
                     if not href or href.startswith(('javascript:', 'mailto:', 'tel:')):
                         continue
 

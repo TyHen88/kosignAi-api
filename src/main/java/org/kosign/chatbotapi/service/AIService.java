@@ -4,16 +4,24 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 import org.kosign.chatbotapi.domains.PPCBank;
+import org.kosign.chatbotapi.model.AiToolCallResponse;
+import org.kosign.chatbotapi.model.ConversationContext;
 import org.kosign.chatbotapi.repository.PPCBankContentRepository;
+import org.kosign.chatbotapi.util.PromptBuilder;
+import org.kosign.chatbotapi.util.QueryAnalysis;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 @Service
@@ -59,64 +67,121 @@ public class AIService {
 
     @Autowired
     private PPCBankContentRepository pageContentRepository;
+    
+    @Autowired
+    private BankingDomainService bankingDomainService;
+    
+    @Autowired
+    private SearchService searchService;
+    
+    @Autowired
+    private TransactionAIService transactionAIService;
 
     private final OkHttpClient httpClient = new OkHttpClient();
     private final ObjectMapper objectMapper = new ObjectMapper();
-
-    // Banking-related keywords and synonyms for better matching
-    private final Map<String, List<String>> bankingKeywords = Map.of(
-            "payments", Arrays.asList("payment", "pay", "bill", "bills", "transfer", "remittance", "send money"),
-            "loans", Arrays.asList("loan", "credit", "lending", "borrow", "mortgage", "financing"),
-            "accounts", Arrays.asList("account", "savings", "checking", "deposit", "current account"),
-            "cards", Arrays.asList("card", "credit card", "debit card", "atm card", "visa", "mastercard"),
-            "services", Arrays.asList("service", "banking service", "financial service", "product"),
-            "rates", Arrays.asList("rate", "interest", "fees", "charges", "pricing"),
-            "mobile", Arrays.asList("mobile banking", "app", "online banking", "digital", "internet banking"),
-            "branches", Arrays.asList("branch", "location", "atm", "office", "address"),
-            "business", Arrays.asList("corporate", "commercial", "enterprise", "company", "sme"),
-            "forex", Arrays.asList("foreign exchange", "currency", "exchange rate", "usd", "dollar"));
+    
+    // Session-based conversation context (in production, use Redis or database)
+    private final Map<String, ConversationContext> conversationContexts = new HashMap<>();
 
     // main method that processes the user query
     public String processUserQuery(String userQuery) {
+        return processUserQueryWithSession(userQuery, "default-session");
+    }
+    
+    /**
+     * Enhanced method with session context support and optimized performance
+     */
+    public String processUserQueryWithSession(String userQuery, String sessionId) {
+        Instant startTime = Instant.now();
+        
         try {
-            logger.info("Processing user query: {}", userQuery);
-
-            // Clean and normalize the query
-            String normalizedQuery = normalizeQuery(userQuery);
-
-            // Check for simple greetings and provide a direct, simple response.
+            logger.info("🔍 Processing user query: {} (Session: {})", userQuery, sessionId);
+            
+            // Input validation and sanitization
+            if (userQuery == null || userQuery.trim().isEmpty()) {
+                return "💬 **No Message Received** - Please share your question about PPC Bank services, and I'll be happy to help!";
+            }
+            
+            // Early greeting detection for faster response
+            final String normalizedQuery = normalizeQuery(userQuery);
             if (isGreeting(normalizedQuery)) {
-                logger.info("Greeting detected. Bypassing full AI generation for a simple response.");
-                return "Hello! How can I assist you today?";
+                logger.debug("⚡ Fast greeting response ({}ms)", Duration.between(startTime, Instant.now()).toMillis());
+                return "👋 **Hello! Welcome to PPC Bank!**\n\n" +
+                       "I'm here to help you with:\n" +
+                       "• 🏦 Banking services and products\n" +
+                       "• 💳 Account information and requirements\n" +
+                       "• 🔍 Transaction status checking\n" +
+                       "• 📞 Contact information and branch locations\n" +
+                       "• ❓ Any other banking questions\n\n" +
+                       "What would you like to know?";
             }
 
-            // Extract smart keywords with intent recognition
-            List<String> keywords = extractSmartKeywords(normalizedQuery);
-            logger.debug("Extracted smart keywords: {}", keywords);
+            // Parallel operations for better performance
+            CompletableFuture<Boolean> transactionCheckFuture = CompletableFuture.supplyAsync(() -> 
+                transactionAIService.isTransactionInquiry(userQuery));
+            
+            CompletableFuture<Void> cleanupFuture = CompletableFuture.runAsync(() -> {
+                searchService.clearCache();
+                cleanupExpiredContexts();
+            });
 
-            // Perform intelligent search
-            List<PPCBank> relevantPages = performIntelligentSearch(keywords, normalizedQuery);
-            logger.debug("Found {} relevant pages", relevantPages.size());
-
-            // If no specific results, try broader search
-            if (relevantPages.isEmpty()) {
-                relevantPages = performBroaderSearch(normalizedQuery);
-                logger.debug("Broader search found {} pages", relevantPages.size());
+            // Wait for transaction check and cleanup
+            CompletableFuture.allOf(transactionCheckFuture, cleanupFuture).join();
+            
+            // Check for transaction inquiries first (high priority)
+            if (transactionCheckFuture.get()) {
+                logger.info("🔍 Transaction inquiry detected for query: {}", userQuery);
+                Duration processingTime = Duration.between(startTime, Instant.now());
+                String response = handleTransactionInquiry(userQuery, sessionId);
+                logger.info("⚡ Transaction inquiry completed in {}ms", processingTime.toMillis());
+                return response;
             }
 
-            // Build enhanced context
-            String context = buildEnhancedContext(relevantPages, userQuery);
+            // Enhanced domain detection and keyword extraction
+            CompletableFuture<List<String>> keywordsFuture = CompletableFuture.supplyAsync(() -> 
+                bankingDomainService.extractSmartKeywords(normalizedQuery));
+            CompletableFuture<String> domainFuture = CompletableFuture.supplyAsync(() -> 
+                bankingDomainService.detectBankingDomain(normalizedQuery));
 
-            // Generate intelligent AI response
-            String aiResponse = generateSmartResponse(userQuery, context, relevantPages.isEmpty());
+            List<String> keywords = keywordsFuture.get();
+            String primaryDomain = domainFuture.get();
+            
+            logger.debug("📊 Analysis: keywords={}, domain={}", keywords.size(), primaryDomain);
 
-            logger.info("Successfully generated AI response for query: {}", userQuery);
+            // Optimized search with context awareness
+            List<PPCBank> relevantPages = performOptimizedSearch(keywords, normalizedQuery, primaryDomain, sessionId);
+            
+            logger.debug("📄 Found {} relevant pages", relevantPages.size());
+
+            // Store conversation context for future optimization
+            if (!relevantPages.isEmpty() && primaryDomain != null) {
+                conversationContexts.put(sessionId, 
+                    new ConversationContext(primaryDomain, keywords, relevantPages));
+            }
+
+            // Enhanced context building and AI response generation
+            String contextStr = buildEnhancedContext(relevantPages, userQuery);
+            String aiResponse = generateSmartResponse(userQuery, contextStr, relevantPages.isEmpty());
+
+            Duration totalTime = Duration.between(startTime, Instant.now());
+            logger.info("✅ Query processed successfully in {}ms (Session: {})", totalTime.toMillis(), sessionId);
+            
             return aiResponse;
 
         } catch (Exception e) {
-            logger.error("Error processing user query: {}", e.getMessage(), e);
-            return "❌ I apologize, but I encountered an error while processing your request. Please try rephrasing your question or contact support.";
+            Duration errorTime = Duration.between(startTime, Instant.now());
+            logger.error("💥 Error processing query after {}ms: {}", errorTime.toMillis(), e.getMessage(), e);
+            
+            return generateErrorResponse(e, userQuery);
         }
+    }
+    
+    /**
+     * Cleans up expired conversation contexts
+     */
+    private void cleanupExpiredContexts() {
+        long maxAge = 600000; // 10 minutes
+        conversationContexts.entrySet().removeIf(entry -> entry.getValue().isExpired(maxAge));
     }
 
     private String normalizeQuery(String query) {
@@ -126,296 +191,53 @@ public class AIService {
                 .trim();
     }
 
-    private List<String> extractSmartKeywords(String query) {
-        Set<String> keywords = new HashSet<>();
-
-        // Split query into words
-        String[] words = query.split("\\s+");
-
-        // Add original words (filtering out very common words)
-        Set<String> stopWords = Set.of("the", "is", "are", "was", "were", "a", "an", "and", "or", "but",
-                "in", "on", "at", "to", "for", "of", "with", "by", "from", "about", "into", "through",
-                "during", "before", "after", "above", "below", "up", "down", "out", "off", "over",
-                "under", "again", "further", "then", "once", "what", "how", "when", "where", "why",
-                "tell", "me", "you", "i", "can", "could", "would", "should", "will", "do", "does", "did");
-
-        for (String word : words) {
-            if (word.length() > 2 && !stopWords.contains(word)) {
-                keywords.add(word);
-            }
-        }
-
-        // Add banking-related synonyms
-        for (Map.Entry<String, List<String>> entry : bankingKeywords.entrySet()) {
-            for (String synonym : entry.getValue()) {
-                if (query.contains(synonym)) {
-                    keywords.add(entry.getKey());
-                    keywords.addAll(entry.getValue());
-                }
-            }
-        }
-
-        // Add phrase-based keywords
-        if (query.contains("bill payment") || query.contains("pay bill")) {
-            keywords.addAll(Arrays.asList("payment", "bill", "pay", "transfer", "online"));
-        }
-        if (query.contains("exchange rate") || query.contains("currency")) {
-            keywords.addAll(Arrays.asList("forex", "exchange", "rate", "currency", "usd"));
-        }
-        if (query.contains("mobile banking") || query.contains("app")) {
-            keywords.addAll(Arrays.asList("mobile", "app", "online", "digital", "banking"));
-        }
-
-        return new ArrayList<>(keywords);
-    }
-
-    private List<PPCBank> performIntelligentSearch(List<String> keywords, String originalQuery) {
-        Set<PPCBank> allResults = new LinkedHashSet<>();
-
-        // 1. Exact phrase search first
-        List<PPCBank> exactResults = pageContentRepository.findByContentContainingIgnoreCase(originalQuery);
-        allResults.addAll(exactResults);
-
-        // 2. Multi-keyword search
-        if (keywords.size() >= 2) {
-            String keyword1 = keywords.size() > 0 ? keywords.get(0) : null;
-            String keyword2 = keywords.size() > 1 ? keywords.get(1) : null;
-            String keyword3 = keywords.size() > 2 ? keywords.get(2) : null;
-            List<PPCBank> multiResults = pageContentRepository.findByMultipleKeywords(keyword1, keyword2, keyword3);
-            allResults.addAll(multiResults);
-        }
-
-        // 3. Individual keyword search with relevance scoring
-        Map<PPCBank, Integer> relevanceScore = new HashMap<>();
-
-        for (String keyword : keywords) {
-            List<PPCBank> keywordResults = pageContentRepository.findByTitleOrContentContainingIgnoreCase(keyword);
-            for (PPCBank page : keywordResults) {
-                relevanceScore.put(page, relevanceScore.getOrDefault(page, 0) + 1);
-                allResults.add(page);
-            }
-        }
-
-        // Sort by relevance score and return top results
-        return allResults.stream()
-                .sorted((p1, p2) -> Integer.compare(
-                        relevanceScore.getOrDefault(p2, 0),
-                        relevanceScore.getOrDefault(p1, 0)))
-                .limit(8)
-                .collect(Collectors.toList());
-    }
-
-    private List<PPCBank> performBroaderSearch(String query) {
-        // If no specific results, try to find any banking-related content
-        List<String> generalTerms = Arrays.asList("bank", "service", "account", "payment", "loan", "card");
-
-        for (String term : generalTerms) {
-            List<PPCBank> results = pageContentRepository.findByTitleOrContentContainingIgnoreCase(term);
-            if (!results.isEmpty()) {
-                return results.stream().limit(5).collect(Collectors.toList());
-            }
-        }
-
-        // Last resort: get recent pages
-        return pageContentRepository.findRecentPages(PageRequest.of(0, 5)).getContent();
-    }
-
     private String buildEnhancedContext(List<PPCBank> pages, String userQuery) {
         if (pages.isEmpty()) {
             return "While I don't have specific information about your exact query, I can help you with general banking information from PPC Bank.";
         }
 
+        String primaryDomain = bankingDomainService.detectBankingDomain(userQuery);
         StringBuilder context = new StringBuilder();
-        context.append("Based on information from PPC Bank's website, here's what I found:\n\n");
+        
+        // Add domain-specific context header
+        if (primaryDomain != null) {
+            String domainName = bankingDomainService.formatDomainName(primaryDomain);
+            context.append(String.format("📋 **%s Information from PPC Bank:**\n\n", domainName));
+        } else {
+            context.append("📋 **Information from PPC Bank's website:**\n\n");
+        }
 
-        for (int i = 0; i < Math.min(pages.size(), 5); i++) {
-            PPCBank page = pages.get(i);
+        // Group and prioritize content by relevance
+        List<PPCBank> prioritizedPages = pages.stream().limit(5).collect(Collectors.toList());
+        
+        for (int i = 0; i < prioritizedPages.size(); i++) {
+            PPCBank page = prioritizedPages.get(i);
             context.append(String.format("**Source %d: %s**\n", i + 1,
                     page.getTitle() != null ? page.getTitle() : "PPC Bank Information"));
 
-            // Extract most relevant content snippets
-            String content = extractRelevantSnippet(page.getContent(), userQuery);
-            context.append(String.format("Content: %s\n", content));
-            context.append(String.format("URL: %s\n\n", page.getUrl()));
+            // Extract domain-focused content snippets
+            String content = searchService.extractDomainRelevantSnippet(page.getContent(), userQuery, primaryDomain);
+            context.append(String.format("📄 Content: %s\n", content));
+            
+            // Add page URL for reference
+            if (page.getUrl() != null) {
+                context.append(String.format("🔗 Source: %s\n", page.getUrl()));
+            }
+            
+            // Add last updated info if available
+            if (page.getUpdatedAt() != null) {
+                context.append(String.format("📅 Updated: %s\n", page.getUpdatedAt().toLocalDate()));
+            }
+            
+            context.append("\n");
+        }
+        
+        // Add domain-specific guidance
+        if (primaryDomain != null) {
+            context.append(bankingDomainService.getDomainSpecificGuidance(primaryDomain));
         }
 
         return context.toString();
-    }
-
-    private String extractRelevantSnippet(String content, String query) {
-        if (content == null)
-            return "No content available.";
-
-        // Try to find the most relevant part of the content
-        String[] queryWords = query.toLowerCase().split("\\s+");
-        String lowerContent = content.toLowerCase();
-
-        int bestStart = 0;
-        int maxMatches = 0;
-
-        // Find the section with most query word matches
-        for (int i = 0; i < content.length() - 400; i += 100) {
-            int end = Math.min(i + 400, content.length());
-            String snippet = lowerContent.substring(i, end);
-
-            int matches = 0;
-            for (String word : queryWords) {
-                if (word.length() > 2 && snippet.contains(word)) {
-                    matches++;
-                }
-            }
-
-            if (matches > maxMatches) {
-                maxMatches = matches;
-                bestStart = i;
-            }
-        }
-
-        int end = Math.min(bestStart + 500, content.length());
-        String snippet = content.substring(bestStart, end);
-
-        if (end < content.length()) {
-            snippet += "...";
-        }
-
-        return snippet;
-    }
-
-    private String generateIntelligentResponse(String userQuery, String context, boolean noSpecificData)
-            throws IOException {
-
-        String basePrompt = buildBasePrompt(userQuery);
-        String enhancedPrompt = noSpecificData ? basePrompt + buildGeneralResponseInstructions()
-                : basePrompt + buildContextualResponseInstructions(context);
-
-        return callAiService(enhancedPrompt);
-//        return callOpenAIAPI(enhancedPrompt);
-    }
-
-    private String buildBasePrompt(String userQuery) {
-        return String.format("""
-                You are PPC Bank's AI assistant. User asks: "%s"
-
-                RESPONSE STRUCTURE:
-                🎯 **Direct Answer** - Answer the specific question immediately
-                📋 **Details** - Key information in table format when applicable
-                💡 **Important Notes** - Critical considerations or warnings
-                🔗 **Next Steps** - Clear action items
-                ❓ **Related Questions** - 2-3 relevant follow-up questions
-
-                TONE: Professional, warm, helpful
-                FORMAT: Use tables for requirements/amounts/documents
-                """, userQuery);
-    }
-
-    private String buildGeneralResponseInstructions() {
-        return """
-
-                INSTRUCTIONS:
-                - Provide general banking guidance since no specific PPC Bank data is available
-                - Use banking best practices and common industry standards
-                - Include disclaimer: "For specific PPC Bank requirements, please visit a branch or check our website"
-                - Structure information clearly with tables where helpful
-                - Focus on practical, actionable advice
-                """;
-    }
-
-    private String buildContextualResponseInstructions(String context) {
-        return String.format("""
-
-                PPC BANK INFORMATION:
-                %s
-
-                INSTRUCTIONS:
-                - Use the provided PPC Bank information as your primary source
-                - Answer directly and specifically based on this data
-                - If information is incomplete, note what might be missing
-                - Create tables for document requirements, fees, or limits
-                - Suggest contacting PPC Bank for any unclear details
-                """, context);
-    }
-
-    // Alternative: Single optimized method approach
-    private String generateIntelligentResponseOptimized(String userQuery, String context, boolean noSpecificData)
-            throws IOException {
-
-        StringBuilder prompt = new StringBuilder();
-
-        // Core prompt - always included
-        prompt.append(String.format("""
-                You are PPC Bank's helpful AI assistant. User question: "%s"
-
-                RESPONSE FORMAT:
-                🎯 **Answer**: [Direct response to the question]
-                """, userQuery));
-
-        // Add specific sections based on query type
-        if (containsDocumentQuery(userQuery)) {
-            prompt.append("""
-                    📋 **Requirements**:
-                    | Document | Validity | Notes |
-                    |----------|----------|-------|
-                    | [Doc 1] | [Period] | [Details] |
-
-                    """);
-        }
-
-        if (containsAmountQuery(userQuery)) {
-            prompt.append("""
-                    💰 **Amounts & Fees**:
-                    | Type | Amount | Fee | Limit |
-                    |------|--------|-----|-------|
-                    | [Type] | [Amount] | [Fee] | [Limit] |
-
-                    """);
-        }
-
-        // Always include these sections
-        prompt.append("""
-                💡 **Important**: [Key considerations]
-                🔗 **Next Steps**: [What to do next]
-                ❓ **You might ask**: [2-3 follow-up questions]
-
-                """);
-
-        // Context-specific instructions
-        if (noSpecificData) {
-            prompt.append("""
-                    GUIDELINES:
-                    - Provide general banking guidance (no specific PPC Bank data available)
-                    - Include: "Contact PPC Bank directly for specific requirements"
-                    - Use industry-standard practices and common requirements
-                    """);
-        } else {
-            prompt.append(String.format("""
-                    PPC BANK DATA:
-                    %s
-
-                    GUIDELINES:
-                    - Use provided PPC Bank information as primary source
-                    - Be specific and accurate based on this data
-                    - If data seems incomplete, mention what might be missing
-                    """, context));
-        }
-
-        return callAiService(prompt.toString());
-//        return callOpenAIAPI(prompt.toString());
-    }
-
-    // Helper methods for query analysis
-    private boolean containsDocumentQuery(String query) {
-        String lowerQuery = query.toLowerCase();
-        return lowerQuery.contains("document") || lowerQuery.contains("requirement") ||
-                lowerQuery.contains("passport") || lowerQuery.contains("certificate") ||
-                lowerQuery.contains("need") || lowerQuery.contains("bring");
-    }
-
-    private boolean containsAmountQuery(String query) {
-        String lowerQuery = query.toLowerCase();
-        return lowerQuery.contains("amount") || lowerQuery.contains("fee") ||
-                lowerQuery.contains("cost") || lowerQuery.contains("minimum") ||
-                lowerQuery.contains("maximum") || lowerQuery.contains("limit") ||
-                lowerQuery.contains("charge");
     }
 
     // Enhanced version with dynamic prompt building
@@ -425,25 +247,19 @@ public class AIService {
         PromptBuilder builder = new PromptBuilder(userQuery);
 
         // Analyze query and add appropriate sections
-        QueryAnalysis analysis = analyzeQuery(userQuery);
+        QueryAnalysis analysis = QueryAnalysis.analyze(userQuery);
 
         builder.addDirectAnswerSection()
                 .addConditionalTable(analysis.needsDocumentTable(), "Requirements")
                 .addConditionalTable(analysis.needsAmountTable(), "Amounts & Fees")
                 .addImportantNotes()
                 .addNextSteps()
-                .addFollowUpQuestions();
+                .addFollowUpQuestions()
+                .addContextualInstructions(context);
 
-        if (noSpecificData) {
-            // Use the new instructions for external search
-            builder.addExternalSearchInstructions();
-        } else {
-            builder.addContextualInstructions(context);
-        }
-
-//        return callOpenAIAPI(builder.build());
         return callAiService(builder.build());
     }
+    
     private boolean isGreeting(String normalizedQuery) {
         // A set of common greetings.
         final Set<String> greetings = Set.of(
@@ -468,123 +284,6 @@ public class AIService {
         return false;
     }
 
-    private static class PromptBuilder {
-        private StringBuilder prompt;
-        private String userQuery;
-
-        public PromptBuilder(String userQuery) {
-            this.userQuery = userQuery;
-            this.prompt = new StringBuilder();
-            prompt.append(String.format("You are PPC Bank's AI assistant. User asks: \"%s\"\n\n", userQuery));
-        }
-
-        public PromptBuilder addDirectAnswerSection() {
-            prompt.append("🎯 **Direct Answer**: [Answer the question immediately]\n\n");
-            return this;
-        }
-
-        public PromptBuilder addConditionalTable(boolean condition, String type) {
-            if (condition) {
-                if ("Requirements".equals(type)) {
-                    prompt.append("""
-                            📋 **Requirements**:
-                            | Document | Validity | Purpose |
-                            |----------|----------|---------|
-                            | [Item] | [Period] | [Reason] |
-
-                            """);
-                } else if ("Amounts & Fees".equals(type)) {
-                    prompt.append("""
-                            💰 **Amounts & Fees**:
-                            | Type | Amount | Fee |
-                            |------|--------|-----|
-                            | [Type] | [Amount] | [Fee] |
-
-                            """);
-                }
-            }
-            return this;
-        }
-
-        public PromptBuilder addImportantNotes() {
-            prompt.append("💡 **Important**: [Critical considerations]\n");
-            return this;
-        }
-
-        public PromptBuilder addNextSteps() {
-            prompt.append("🔗 **Next Steps**: [Clear actions to take]\n");
-            return this;
-        }
-
-        public PromptBuilder addFollowUpQuestions() {
-            prompt.append("❓ **Related Questions**: [2-3 relevant follow-ups]\n\n");
-            return this;
-        }
-
-        public PromptBuilder addGeneralBankingInstructions() {
-            prompt.append("""
-                    INSTRUCTIONS:
-                    - Provide helpful general banking guidance
-                    - Include: "Contact PPC Bank for specific requirements"
-                    - Use professional, warm tone
-                    """);
-            return this;
-        }
-
-        public PromptBuilder addContextualInstructions(String context) {
-            prompt.append(String.format("""
-                    PPC BANK INFO: %s
-
-                    INSTRUCTIONS:
-                    - Use provided information as primary source
-                    - Be specific and accurate
-                    - Professional, helpful tone
-                    """, context));
-            return this;
-        }
-        public PromptBuilder addExternalSearchInstructions() {
-            prompt.append("""
-                    INSTRUCTIONS:
-                    - The internal search for PPC Bank information did not return a specific answer.
-                    - Your task is to now act as a general, helpful AI assistant.
-                    - Use your broad knowledge and search capabilities to find the best possible answer to the user's question.
-                    - **Do NOT invent information about PPC Bank.**
-                    - If the user's question was about a general topic (e.g., "what is a loan?"), answer it comprehensively.
-                    - If the user's question was specifically about PPC Bank (e.g., "what are PPC Bank's car loan rates?"), you must state that you could not find specific information on the PPC Bank website, but you can provide general information on the topic. Then, provide that general information.
-                    """);
-            return this;
-        }
-
-        public String build() {
-            return prompt.toString();
-        }
-    }
-
-    private static class QueryAnalysis {
-        private boolean needsDocumentTable;
-        private boolean needsAmountTable;
-
-        public QueryAnalysis(boolean needsDocumentTable, boolean needsAmountTable) {
-            this.needsDocumentTable = needsDocumentTable;
-            this.needsAmountTable = needsAmountTable;
-        }
-
-        public boolean needsDocumentTable() {
-            return needsDocumentTable;
-        }
-
-        public boolean needsAmountTable() {
-            return needsAmountTable;
-        }
-    }
-
-    private QueryAnalysis analyzeQuery(String query) {
-        String lower = query.toLowerCase();
-        boolean docTable = lower.matches(".*(document|requirement|passport|certificate|valid|bring|need).*");
-        boolean amountTable = lower.matches(".*(amount|fee|cost|minimum|maximum|limit|charge|price).*");
-        return new QueryAnalysis(docTable, amountTable);
-    }
-
     /**
      * Central dispatcher that routes the request to the configured AI provider.
      */
@@ -604,6 +303,7 @@ public class AIService {
                 throw new IllegalStateException("Unsupported AI provider: " + activeProvider);
         }
     }
+    
     //callGeminiAPI method
     private String callGeminiAPI(String prompt) throws IOException {
         // Escape the prompt properly for JSON
@@ -662,16 +362,9 @@ public class AIService {
 
     //callOpenAIAPI method
     private String callOpenAIAPI(String prompt) throws IOException {
-        // Note: The variable name 'googleApiKey' is misleading here.
-        // It holds your OpenAI key as per your @Value("${chatgpt.api-key}") annotation.
-        // Consider renaming it to 'openAIApiKey' for better clarity.
         String apiKey = openAIApiKey;
-
-        // 1. Set the correct URL for OpenAI
         String url = "https://api.openai.com/v1/chat/completions";
 
-        // 2. Build the request body in the format OpenAI expects
-        // We use a Map and ObjectMapper to create the JSON safely, avoiding manual escaping.
         Map<String, Object> messageUser = new HashMap<>();
         messageUser.put("role", "user");
         messageUser.put("content", prompt);
@@ -680,33 +373,26 @@ public class AIService {
         messages.add(messageUser);
 
         Map<String, Object> requestBodyMap = new HashMap<>();
-        requestBodyMap.put("model", openAIModel); // Uses the model from your application.properties
+        requestBodyMap.put("model", openAIModel);
         requestBodyMap.put("messages", messages);
-        // Optional: Add other parameters like temperature, max_tokens, etc.
-        // requestBodyMap.put("temperature", 0.7);
-        // requestBodyMap.put("max_tokens", 1500);
 
         String requestBodyJson = objectMapper.writeValueAsString(requestBodyMap);
 
-        // 3. Build the request with the correct headers, including Authorization
         Request request = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(MediaType.get("application/json"), requestBodyJson))
                 .addHeader("Content-Type", "application/json")
-                .addHeader("Authorization", "Bearer " + apiKey) // Crucial for OpenAI
+                .addHeader("Authorization", "Bearer " + apiKey)
                 .build();
 
         try (Response response = httpClient.newCall(request).execute()) {
             String responseBody = response.body().string();
             if (!response.isSuccessful()) {
-                // Log the detailed error from the API for easier debugging
                 logger.error("OpenAI API error: {} - {}", response.code(), responseBody);
                 throw new IOException("OpenAI API error: " + response.code() + " - " + responseBody);
             }
 
             JsonNode jsonResponse = objectMapper.readTree(responseBody);
-
-            // 4. Parse the OpenAI response structure
             JsonNode choices = jsonResponse.get("choices");
             if (choices != null && choices.isArray() && choices.size() > 0) {
                 JsonNode message = choices.get(0).get("message");
@@ -721,13 +407,9 @@ public class AIService {
     }
 
     private String callClaudeAPI(String prompt) throws IOException {
-        // 1. Set the correct URL and required headers for Anthropic
         String url = "https://api.anthropic.com/v1/messages";
         String anthropicVersion = "2023-06-01";
 
-        // 2. Build the request body in the format Claude expects
-        // Note: Claude can take a system prompt, but it's a top-level parameter, not in the messages array.
-        // For simplicity and alignment with the curl command, we'll stick to the user message.
         Map<String, Object> userMessage = new HashMap<>();
         userMessage.put("role", "user");
         userMessage.put("content", prompt);
@@ -737,21 +419,18 @@ public class AIService {
         Map<String, Object> requestBodyMap = new HashMap<>();
         requestBodyMap.put("model", anthropicModel);
         requestBodyMap.put("messages", messages);
-        requestBodyMap.put("max_tokens", 1024); // This is a required parameter for Claude
+        requestBodyMap.put("max_tokens", 1024);
 
         String requestBodyJson = objectMapper.writeValueAsString(requestBodyMap);
 
-        // 3. Build the request with the correct headers for Anthropic
         Request request = new Request.Builder()
                 .url(url)
                 .post(RequestBody.create(MediaType.get("application/json"), requestBodyJson))
-                .addHeader("x-api-key", anthropicApiKey) // Correct header for authentication
-                .addHeader("anthropic-version", anthropicVersion) // Required version header
+                .addHeader("x-api-key", anthropicApiKey)
+                .addHeader("anthropic-version", anthropicVersion)
                 .addHeader("Content-Type", "application/json")
                 .build();
 
-        // 4. The 'executeRequest' method in your full file context is a great pattern.
-        // We can call it here to handle the response.
         return executeRequest(request, "Claude");
     }
 
@@ -776,6 +455,7 @@ public class AIService {
 
         return executeRequest(request, "DeepSeek");
     }
+    
     private String executeRequest(Request request, String providerName) throws IOException {
         try (Response response = httpClient.newCall(request).execute()) {
             String responseBody = response.body().string();
@@ -803,10 +483,11 @@ public class AIService {
             return "I apologize, but I'm having trouble generating a response right now.";
         }
     }
+    
     public String getDatabaseStats() {
         try {
             Long totalPages = pageContentRepository.getTotalPageCount();
-            List<PPCBank> recentPages = pageContentRepository.findRecentPages(PageRequest.of(0, 5)).getContent();
+            List<PPCBank> recentPages = pageContentRepository.findRecentPages(org.springframework.data.domain.PageRequest.of(0, 5)).getContent();
 
             StringBuilder stats = new StringBuilder();
             stats.append(String.format("📊 **PPC Bank Information Database**\n\n"));
@@ -829,5 +510,282 @@ public class AIService {
             logger.error("Error getting database stats: {}", e.getMessage(), e);
             return "❌ Unable to retrieve database statistics at the moment.";
         }
+    }
+
+    /**
+     * Handle transaction inquiry with automatic data extraction
+     */
+    private String handleTransactionInquiry(String userQuery, String sessionId) {
+        logger.info("Handling transaction inquiry: {}", userQuery);
+        
+        try {
+            // Try to extract transaction data from the user query
+            TransactionData extractedData = extractTransactionData(userQuery);
+            
+            if (extractedData.isComplete()) {
+                // All data is available, proceed with transaction check
+                logger.info("Complete transaction data found, checking status");
+                return transactionAIService.checkTransactionStatus(
+                    extractedData.hash, 
+                    extractedData.amount, 
+                    extractedData.currency
+                );
+            } else {
+                // Missing data, request more information
+                logger.info("Incomplete transaction data, requesting details");
+                StringBuilder response = new StringBuilder();
+                response.append("I understand you're experiencing a transaction issue. Let me help you check the transaction status.\n\n");
+                
+                if (extractedData.hasPartialData()) {
+                    response.append("I found some information from your message:\n");
+                    if (extractedData.hash != null) {
+                        response.append("- Hash: ").append(extractedData.hash).append("\n");
+                    }
+                    if (extractedData.amount != null) {
+                        response.append("- Amount: ").append(extractedData.amount).append("\n");
+                    }
+                    if (extractedData.currency != null) {
+                        response.append("- Currency: ").append(extractedData.currency).append("\n");
+                    }
+                    response.append("\n");
+                }
+                
+                response.append(transactionAIService.getTransactionDetailsPrompt());
+                return response.toString();
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error handling transaction inquiry: {}", e.getMessage(), e);
+            return "❌ I encountered an error while processing your transaction inquiry. Please try again or contact PPC Bank support.";
+        }
+    }
+    
+    /**
+     * Extract transaction data from user query using regex patterns
+     */
+    private TransactionData extractTransactionData(String userQuery) {
+        TransactionData data = new TransactionData();
+        
+        // Enhanced pattern for hash - look for various ways users might provide it
+        // Examples: "hash: c250339a", "transaction c250339a", "my hash is abc123", "c250339a"
+        Pattern hashPattern = Pattern.compile(
+            "(?:hash|transaction|id)[:\\s]+([a-zA-Z0-9]{6,})|" +        // "hash: abc123"
+            "\\bhash\\s+([a-zA-Z0-9]{6,})|" +                          // "hash abc123"
+            "\\b([a-zA-Z0-9]{8,})\\b(?=\\s|$|,|\\.|!|\\?)",           // standalone alphanumeric 8+ chars
+            Pattern.CASE_INSENSITIVE
+        );
+        Matcher hashMatcher = hashPattern.matcher(userQuery);
+        if (hashMatcher.find()) {
+            // Get the first non-null group
+            for (int i = 1; i <= hashMatcher.groupCount(); i++) {
+                if (hashMatcher.group(i) != null) {
+                    data.hash = hashMatcher.group(i).trim();
+                    break;
+                }
+            }
+        }
+        
+        // Enhanced pattern for amount - handle various formats
+        // Examples: "amount: 50", "50 USD", "$50", "sum 100", "paid 25.50"
+        Pattern amountPattern = Pattern.compile(
+            "(?:amount|sum|paid|send|sent|transfer)[:\\s]*([0-9]+(?:\\.[0-9]+)?)|" +  // "amount: 50"
+            "\\$([0-9]+(?:\\.[0-9]+)?)|" +                                           // "$50"
+            "([0-9]+(?:\\.[0-9]+)?)\\s*(?:USD|KHR|dollars?|riels?)",               // "50 USD"
+            Pattern.CASE_INSENSITIVE
+        );
+        Matcher amountMatcher = amountPattern.matcher(userQuery);
+        if (amountMatcher.find()) {
+            // Get the first non-null group
+            for (int i = 1; i <= amountMatcher.groupCount(); i++) {
+                if (amountMatcher.group(i) != null) {
+                    data.amount = amountMatcher.group(i).trim();
+                    break;
+                }
+            }
+        }
+        
+        // Enhanced pattern for currency - handle various formats
+        // Examples: "USD", "KHR", "dollars", "riels", "in USD"
+        Pattern currencyPattern = Pattern.compile(
+            "\\b(USD|KHR)\\b|" +                    // Direct currency codes
+            "\\b(dollars?)\\b|" +                   // "dollar" or "dollars"
+            "\\b(riels?)\\b",                      // "riel" or "riels"
+            Pattern.CASE_INSENSITIVE
+        );
+        Matcher currencyMatcher = currencyPattern.matcher(userQuery);
+        if (currencyMatcher.find()) {
+            String currency = currencyMatcher.group().toLowerCase();
+            if (currency.equals("usd") || currency.contains("dollar")) {
+                data.currency = "USD";
+            } else if (currency.equals("khr") || currency.contains("riel")) {
+                data.currency = "KHR";
+            } else {
+                data.currency = currencyMatcher.group().toUpperCase();
+            }
+        }
+        
+        // Additional pattern to extract structured data like "Hash: abc123, Amount: 50, Currency: USD"
+        if (data.hash == null || data.amount == null || data.currency == null) {
+            extractStructuredData(userQuery, data);
+        }
+        
+        return data;
+    }
+    
+    /**
+     * Extract structured transaction data from formatted input
+     */
+    private void extractStructuredData(String userQuery, TransactionData data) {
+        // Look for structured format: "Hash: value, Amount: value, Currency: value"
+        String[] parts = userQuery.split("[,\\n]");
+        
+        for (String part : parts) {
+            part = part.trim();
+            
+            if (data.hash == null && part.toLowerCase().contains("hash")) {
+                Pattern hashPart = Pattern.compile("hash[:\\s]*([a-zA-Z0-9]+)", Pattern.CASE_INSENSITIVE);
+                Matcher matcher = hashPart.matcher(part);
+                if (matcher.find()) {
+                    data.hash = matcher.group(1).trim();
+                }
+            }
+            
+            if (data.amount == null && part.toLowerCase().contains("amount")) {
+                Pattern amountPart = Pattern.compile("amount[:\\s]*([0-9]+(?:\\.[0-9]+)?)", Pattern.CASE_INSENSITIVE);
+                Matcher matcher = amountPart.matcher(part);
+                if (matcher.find()) {
+                    data.amount = matcher.group(1).trim();
+                }
+            }
+            
+            if (data.currency == null && part.toLowerCase().contains("currency")) {
+                Pattern currencyPart = Pattern.compile("currency[:\\s]*(USD|KHR|dollars?|riels?)", Pattern.CASE_INSENSITIVE);
+                Matcher matcher = currencyPart.matcher(part);
+                if (matcher.find()) {
+                    String currency = matcher.group(1).toLowerCase();
+                    if (currency.equals("usd") || currency.contains("dollar")) {
+                        data.currency = "USD";
+                    } else if (currency.equals("khr") || currency.contains("riel")) {
+                        data.currency = "KHR";
+                    } else {
+                        data.currency = matcher.group(1).toUpperCase();
+                    }
+                }
+            }
+        }
+    }
+    
+    /**
+     * Helper class to hold transaction data
+     */
+    private static class TransactionData {
+        String hash;
+        String amount;
+        String currency;
+        
+        boolean isComplete() {
+            return hash != null && amount != null && currency != null;
+        }
+        
+        boolean hasPartialData() {
+            return hash != null || amount != null || currency != null;
+        }
+    }
+
+
+// --- Helper Methods ---
+
+    private Request buildPostRequest(String url, String jsonBody) {
+        RequestBody body = RequestBody.create(jsonBody, MediaType.get("application/json; charset=utf-8"));
+        return new Request.Builder().url(url).post(body).build();
+    }
+
+    /**
+     * Creates the JSON definition for the 'check_transaction_status' tool,
+     * which tells the AI how to use our Java function.
+     */
+    private Map<String, Object> buildTransactionToolDefinition() {
+        Map<String, Object> tool = new HashMap<>();
+        tool.put("name", "check_transaction_status");
+        tool.put("description", "Checks the status of a bank transaction using its hash, amount, and currency. Use this for any user inquiries about payment failures, pending transactions, or status checks.");
+
+        Map<String, Object> properties = new HashMap<>();
+        properties.put("hash", Map.of("type", "STRING", "description", "The unique alphanumeric transaction identifier, e.g., c250339a"));
+        properties.put("amount", Map.of("type", "NUMBER", "description", "The numerical amount of the transaction, e.g., 50.00"));
+        properties.put("currency", Map.of("type", "STRING", "description", "The currency of the transaction, must be either 'USD' or 'KHR'"));
+
+        tool.put("parameters", Map.of("type", "OBJECT", "properties", properties, "required", List.of("hash", "amount", "currency")));
+        return tool;
+    }
+
+    private List<PPCBank> performOptimizedSearch(List<String> keywords, String normalizedQuery, 
+                                               String primaryDomain, String sessionId) {
+        // Check for conversation context first
+        ConversationContext context = conversationContexts.get(sessionId);
+        List<PPCBank> relevantPages = new ArrayList<>();
+        
+        if (context != null && !context.isExpired(300000) && // 5 minutes
+            primaryDomain != null && primaryDomain.equals(context.getLastDomain())) {
+            // Use cached results for better performance
+            logger.debug("🎯 Using conversation context for domain: {}", primaryDomain);
+            context.updateAccess();
+            relevantPages.addAll(context.getLastResults());
+            
+            // Perform incremental search for new information
+            List<PPCBank> additionalResults = searchService.performContextualSearch(keywords, normalizedQuery, context);
+            relevantPages.addAll(additionalResults);
+            
+            // Remove duplicates efficiently
+            relevantPages = relevantPages.stream()
+                .distinct()
+                .limit(8)
+                .collect(Collectors.toList());
+        } else {
+            // Fresh search with optimized strategy
+            relevantPages = searchService.performIntelligentSearch(keywords, normalizedQuery);
+            
+            // Fallback to broader search if needed
+            if (relevantPages.isEmpty()) {
+                relevantPages = searchService.performBroaderSearch(normalizedQuery);
+                logger.debug("🔍 Broader search found {} pages", relevantPages.size());
+            }
+        }
+        
+        return relevantPages;
+    }
+
+    private String generateErrorResponse(Exception e, String userQuery) {
+        String userMessage = e.getMessage();
+        
+        // Generate context-aware error messages
+        if (userQuery != null && !userQuery.isEmpty()) {
+            if (userQuery.contains("loan") || userQuery.contains("credit")) {
+                return "🏦 **Service Temporarily Unavailable**\n\n" +
+                       "I'm experiencing technical difficulties while accessing loan and credit information. " +
+                       "For immediate assistance with loans, please:\n\n" +
+                       "📞 Call PPC Bank: +855 23 726 999\n" +
+                       "🌐 Visit: www.ppcbank.com.kh\n" +
+                       "🏢 Visit any PPC Bank branch\n\n" +
+                       "I apologize for the inconvenience. Please try again in a few minutes.";
+            } else if (userQuery.contains("account") || userQuery.contains("savings")) {
+                return "🏦 **Service Temporarily Unavailable**\n\n" +
+                       "I'm having trouble accessing account information right now. " +
+                       "For immediate help with your account, please:\n\n" +
+                       "📞 Call PPC Bank: +855 23 726 999\n" +
+                       "🌐 Visit: www.ppcbank.com.kh\n" +
+                       "🏢 Visit any PPC Bank branch\n\n" +
+                       "Please try again in a few minutes.";
+            }
+        }
+        
+        return "❌ **I'm Sorry, Something Went Wrong**\n\n" +
+               "I encountered a technical issue while processing your request. " +
+               "This is temporary and should resolve shortly.\n\n" +
+               "**For immediate assistance:**\n" +
+               "📞 Call PPC Bank: +855 23 726 999\n" +
+               "🌐 Visit: www.ppcbank.com.kh\n" +
+               "🏢 Visit any PPC Bank branch\n\n" +
+               "Please try rephrasing your question or contact PPC Bank support directly. " +
+               "I apologize for the inconvenience.";
     }
 }

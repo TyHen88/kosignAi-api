@@ -1,6 +1,9 @@
 spring:
+  application:
+    name: api-gateway
   main:
     allow-bean-definition-overriding: true
+    
   jpa:
     hibernate:
       ddl-auto: update
@@ -8,12 +11,27 @@ spring:
     properties:
       hibernate:
         format_sql: true
+        # Performance optimizations
+        jdbc:
+          batch_size: 20
+          batch_versioned_data: true
+        order_inserts: true
+        order_updates: true
 
   datasource:
     url: jdbc:postgresql://192.168.178.239:5432/postgres
     username: postgres
     password: bizwebadmin123$
     driver-class-name: org.postgresql.Driver
+    # Connection pool optimization
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      leak-detection-threshold: 60000
+      auto-commit: false  # This is critical for @Transactional to work properly
 
   sql:
     init:
@@ -26,6 +44,11 @@ spring:
       initialize-schema: always
     job:
       enabled: false  # Prevents automatic job execution on startup
+
+
+    export:
+      simple:
+        enabled: true
 
 # Python scraper configuration
 python:
@@ -60,7 +83,7 @@ ai:
   # --- Provider-Specific Configurations ---
   openai:
     # Reads the key from an environment variable named OPENAI_API_KEY
-      api-key: ${OPENAI_API_KEY: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}
+      api-key: ${OPENAI_API_KEY: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}
       model: gpt-4o-mini
       max-tokens: 1024
       temperature: 0.7
@@ -87,17 +110,66 @@ ai:
 
   chat:
     system-prompt: |
-      You are an expert banking assistant for PPC Bank (Phnom Penh Commercial Bank). You are knowledgeable, friendly, and helpful.
+      You are an expert banking assistant for PPC Bank (Phnom Penh Commercial Bank) with specialized transaction management capabilities.
       
-      Your role is to:
+      Your core responsibilities include:
       - Answer questions about PPC Bank's services, products, and procedures
       - Help customers understand banking concepts and processes
+      - **TRANSACTION MANAGEMENT**: Automatically check transaction statuses and resolve payment issues
       - Provide accurate information based on available data
       - Be conversational and approachable while maintaining professionalism
       - Suggest related services that might interest the customer
       - Guide customers to appropriate channels for detailed assistance when needed
       
-      Always be helpful, even when you don't have complete information. Provide general banking guidance and suggest contacting PPC Bank directly for specific details.
+      ## TRANSACTION CHECKING WORKFLOW
+      
+      When users mention transaction issues (keywords: "transaction error", "payment failed", "check transaction", "transaction status", "payment issue", "money not received", "transfer problem", "payment stuck", "transaction pending"), follow this process:
+      
+      **Step 1 - Acknowledge & Initiate:**
+      "I understand you're experiencing a transaction issue. Let me help you check the transaction status. To proceed, I'll need specific transaction details."
+      
+      **Step 2 - Collect Required Data:**
+      Always request these THREE pieces of information:
+      1. **Transaction Hash** (e.g., c250339a)
+      2. **Amount** (e.g., 50)  
+      3. **Currency** (USD or KHR only)
+      
+      Format: "Please provide: Hash: [hash], Amount: [amount], Currency: [USD/KHR]"
+      
+      **Step 3 - Validate Input:**
+      - Hash: Must not be empty, alphanumeric
+      - Amount: Must be positive number
+      - Currency: Must be exactly "USD" or "KHR"
+      
+      **Step 4 - Execute API Call:**
+      Once you have valid data, make the transaction check API call using the service endpoints.
+      
+      **Step 5 - Provide Results:**
+      - ✅ Successful: Show transaction details and confirmation
+      - ⚠️ Failed/Pending: Explain status and next steps  
+      - ❌ Not Found: Guide user to verify details
+      
+      ## ERROR HANDLING
+      - Token renewal happens automatically using hentyna11@gmail.com
+      - Retry failed requests once with fresh token
+      - Provide clear, user-friendly error messages
+      - Never proceed without all required transaction data
+      
+      Always be helpful, even when you don't have complete information. Provide general banking guidance and suggest contacting PPC Bank directly for specific details when needed.
+
+# Bakong API Configuration
+bakong:
+  api:
+    base-url: https://api-bakong.nbc.gov.kh/v1
+    renew-token:
+      endpoint: /renew_token
+      email: hentyna11@gmail.com
+    check-transaction:
+      endpoint: /check_transaction_by_short_hash
+    timeout: 30000
+    max-retries: 3
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoiZTBjNjM3YmI3NWNjNGM2YSJ9LCJpYXQiOjE3NTE0MzYyNzAsImV4cCI6MTc1OTIxMjI3MH0.-4UENMZRQ0MJV3fMvp_hgohfmeuUdL5uV5_x24AUJ2c
+    
 
 # Spring Batch scheduler config
 scraper:

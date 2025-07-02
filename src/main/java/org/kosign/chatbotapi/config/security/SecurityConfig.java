@@ -55,6 +55,25 @@ public class SecurityConfig {
      * WARNING
      * Never disable CSRF protection while leaving session management enabled! Doing so will open you up to a Cross-Site Request Forgery attack.
      */
+
+    private static final String[] PUBLIC_URL_WHITELIST = {
+            // -- Your Custom Public Endpoints --
+            "/",
+            "/api/v1/auth/**",
+            "/api/wb/v1/auth/**",
+            "/api/v1/image/**",
+            "/api/query",
+
+            // -- Swagger UI v3 (OpenAPI) & Springdoc --
+            "/swagger-ui.html",
+            "/v3/api-docs/**",
+            "/swagger-ui/**",
+            "/webjars/**",
+            "/v1/check_transaction_by_short_hash",
+            "/v1/renew_token",
+            "/api/**"
+    };
+
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         return http
@@ -63,30 +82,11 @@ public class SecurityConfig {
                         .configurationSource(request -> new CorsConfiguration().applyPermitDefaultValues())
                 )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(
-                                "/",
-                                "/api/wb/v1/auth/**",
-                                "/api/v1/auth/**",
-                                "/api/v1/image/**",
-                                "/swagger-ui/**",
-                                "/v3/api-docs/**",
-                                "/v3/api-docs.yaml",
-                                "/swagger-ui.html",
-                                "/swagger-ui/index.html",
-                                "/webjars/**",
-                                "/swagger-resources/**",
-                                "/swagger-ui.html/**",
-                                "/swagger-ui.html**",
-                                "/swagger.json",
-                                "/swagger-ui/**",
-                                "/swagger-ui/index.html",
-                                "/api/query",
-                                "/**"
-                        ).permitAll()
-                        .requestMatchers(
-                                "/api/**"
+                        .requestMatchers(PUBLIC_URL_WHITELIST).permitAll()
+                        // .requestMatchers(
+                        //         ""
 
-                        ).authenticated()
+                        // ).authenticated()
                         .anyRequest().authenticated()
                 )
                 .exceptionHandling(exceptionHandling -> exceptionHandling

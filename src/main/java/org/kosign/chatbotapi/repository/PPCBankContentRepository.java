@@ -98,4 +98,19 @@ public interface PPCBankContentRepository extends JpaRepository<PPCBank, Long> {
             nativeQuery = true)
     Page<IGetPageContents> findAllContentByStatus(@Param("searchValue") String searchValue, Pageable pageable);
 
+    /**
+     * Searches title, content, and tables for multiple keywords in a single query.
+     * Uses OR logic to match any of the keywords.
+     */
+    @Query(
+            value = """
+            SELECT * FROM tb_ppc_bank
+            WHERE fts_vector @@ websearch_to_tsquery('english', :combinedKeywords)
+            ORDER BY ts_rank(fts_vector, websearch_to_tsquery('english', :combinedKeywords)) DESC
+            LIMIT 20
+                    """,
+            nativeQuery = true
+    )
+    List<PPCBank> findByMultipleKeywordsCombined(@Param("combinedKeywords") String combinedKeywords);
+
 }
