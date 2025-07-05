@@ -1,4 +1,9 @@
 spring:
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 10MB
+      max-request-size: 10MB
   application:
     name: api-gateway
   main:
@@ -19,9 +24,9 @@ spring:
         order_updates: true
 
   datasource:
-    url: jdbc:postgresql://192.168.178.239:5432/postgres
+    url: jdbc:postgresql://localhost:5433/web_scraper?autoCommit=false
     username: postgres
-    password: bizwebadmin123$
+    password: 12345678
     driver-class-name: org.postgresql.Driver
     # Connection pool optimization
     hikari:
@@ -66,7 +71,7 @@ python:
 ai:
   # Use this key to easily switch between AI providers.
   # Options: OPENAI, ANTHROPIC, GEMINI, DEEPSEEK
-  provider: GEMINI
+  provider: OPENAI
 
   # A general system prompt that can be used by any provider
   system-prompt: |
@@ -83,7 +88,7 @@ ai:
   # --- Provider-Specific Configurations ---
   openai:
     # Reads the key from an environment variable named OPENAI_API_KEY
-      api-key: ${OPENAI_API_KEY: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}
+      api-key: ${OPENAI_API_KEY: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}
       model: gpt-4o-mini
       max-tokens: 1024
       temperature: 0.7
@@ -188,6 +193,7 @@ logging:
     org.kosign.chatbotapi.config.springBatch: DEBUG
     org.springframework.sql.init: DEBUG
     org.kosign.chatbotapi.service: DEBUG
+    org.springframework.web.multipart: DEBUG
   pattern:
     console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n"
 

@@ -1,5 +1,13 @@
 package org.kosign.chatbotapi.domains;
 
+
+
+import java.sql.Types;
+
+import com.vladmihalcea.hibernate.type.json.JsonBinaryType;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.kosign.chatbotapi.enums.Status;
+
 import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -7,39 +15,28 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.CreationTimestamp;
 import org.hibernate.annotations.UpdateTimestamp;
-
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "tb_ppc_bank")
+@Table(name = "tb_workflow")
 @Data
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-public class PPCBank {
+public class Workflow{
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(nullable = false, unique = true)
-    private String url;
-
     private String title;
+    private String imageUrl;
+    private String category;
+    @Column(name = "goal_statement", columnDefinition = "TEXT")
+    private String goalStatement;
 
-    @Column(columnDefinition = "TEXT")
-    private String content;
-
-    @Column(name = "content_hash")
-    private String contentHash;
-    
-    private Integer status;
-    private Integer depth;
-
-    @Column(columnDefinition = "TEXT")
-    private String error;
-
-    @Column(name = "content_json", columnDefinition = "JSONB")
-    private String contentJson;
+    @Column(name = "sts",nullable = false, length = Types.CHAR)
+    @JdbcTypeCode(Types.CHAR)
+    @Convert(converter = Status.Converter.class)
+    private Status status;
 
     @CreationTimestamp
     @Column(name = "created_at")
@@ -48,5 +45,4 @@ public class PPCBank {
     @UpdateTimestamp
     @Column(name = "updated_at")
     private LocalDateTime updatedAt;
-
 }

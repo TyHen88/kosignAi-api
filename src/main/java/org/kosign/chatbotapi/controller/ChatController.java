@@ -4,8 +4,10 @@ import org.kosign.chatbotapi.service.AIService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -20,51 +22,36 @@ public class ChatController {
     @Autowired
     private AIService aiService;
 
-    @PostMapping("/query")
-    public ResponseEntity<Map<String, Object>> processQuery(@RequestBody Map<String, String> request) {
+    @PostMapping(value = "/query", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ResponseEntity<Map<String, Object>> processQuery(
+            @RequestParam("query") String userQuery,
+            @RequestParam(value = "image", required = false) MultipartFile image
+    ) {
         try {
-            String userQuery = request.get("query");
-            
             if (userQuery == null || userQuery.trim().isEmpty()) {
                 return ResponseEntity.badRequest().body(createErrorResponse("Query cannot be empty"));
             }
+            String extractedText = aiService.extractTextFromImage(image); 
+            String fullPrompt = userQuery;
+            if (image != null) {
+                fullPrompt = userQuery + "\n\nExtracted from image:\n" + extractedText;
+            }
+            logger.info("Received chat query: {}", fullPrompt);
 
-            logger.info("Received chat query: {}", userQuery);
-            
-            String response = aiService.processUserQuery(userQuery.trim());
-            
+            String response = aiService.processUserQuery(fullPrompt);
+
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
             result.put("query", userQuery);
             result.put("response", response);
             result.put("timestamp", System.currentTimeMillis());
-            
+
             return ResponseEntity.ok(result);
-            
+
         } catch (Exception e) {
             logger.error("Error processing chat query: {}", e.getMessage(), e);
             return ResponseEntity.internalServerError().body(
-                createErrorResponse("Internal server error: " + e.getMessage())
-            );
-        }
-    }
-
-    @GetMapping("/stats")
-    public ResponseEntity<Map<String, Object>> getDatabaseStats() {
-        try {
-            String stats = aiService.getDatabaseStats();
-            
-            Map<String, Object> result = new HashMap<>();
-            result.put("success", true);
-            result.put("stats", stats);
-            result.put("timestamp", System.currentTimeMillis());
-            
-            return ResponseEntity.ok(result);
-            
-        } catch (Exception e) {
-            logger.error("Error getting database stats: {}", e.getMessage(), e);
-            return ResponseEntity.internalServerError().body(
-                createErrorResponse("Error retrieving database statistics")
+                    createErrorResponse("Internal server error: " + e.getMessage())
             );
         }
     }
@@ -75,7 +62,7 @@ public class ChatController {
         result.put("success", true);
         result.put("message", "Chat service is running");
         result.put("timestamp", System.currentTimeMillis());
-        
+
         return ResponseEntity.ok(result);
     }
 
@@ -86,4 +73,4 @@ public class ChatController {
         error.put("timestamp", System.currentTimeMillis());
         return error;
     }
-} 
+}

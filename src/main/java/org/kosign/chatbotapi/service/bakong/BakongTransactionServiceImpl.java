@@ -196,7 +196,8 @@ public class BakongTransactionServiceImpl implements BakongTransactionService {
             log.debug("📋 Bakong API successful response received (length: {})", responseBody.length());
             
             BakongTransactionResponse transactionResponse = objectMapper.readValue(responseBody, BakongTransactionResponse.class);
-            
+
+            System.err.println("transactionResponse: " + transactionResponse);
             // Enhanced response validation
             validateApiResponse(transactionResponse, request.getHash());
             
@@ -205,7 +206,7 @@ public class BakongTransactionServiceImpl implements BakongTransactionService {
     }
 
     private void validateApiResponse(BakongTransactionResponse response, String requestHash) {
-        if (response.getResponseCode() == null || response.getResponseCode() != 0) {
+        if (response.getResponseCode() == null) {
             log.error("🚫 Invalid response code from Bakong API: {}", response.getResponseCode());
             throw new BusinessException(StatusCode.BAD_REQUEST, 
                 "🔍 **Transaction Not Found** - The transaction with the provided details could not be located. " +

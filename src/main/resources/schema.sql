@@ -32,7 +32,7 @@ BEGIN
     NEW.fts_vector :=
         to_tsvector('english', coalesce(NEW.title, '')) ||
         to_tsvector('english', coalesce(NEW.content, '')) ||
-        to_tsvector('english', coalesce(CAST(NEW.tables AS text), ''));
+        to_tsvector('english', coalesce(CAST(NEW.content_json AS text), ''));
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;

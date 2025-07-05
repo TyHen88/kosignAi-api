@@ -28,7 +28,7 @@ import java.util.regex.Pattern;
 public class TransactionAIService {
     
     private final BakongTransactionService bakongTransactionService;
-    @Value("${chat.system-prompt}")
+    @Value("${ai.chat.system-prompt}")
     private String systemPrompt;
     // Optimized patterns with compiled regex for better performance
     private static final Pattern HASH_PATTERN = Pattern.compile("^[a-zA-Z0-9]+$");
