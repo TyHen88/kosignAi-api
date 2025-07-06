@@ -13,7 +13,7 @@ import java.util.List;
 
 @Repository
 public interface PPCBankContentRepository extends JpaRepository<PPCBank, Long> {
-        
+        List<PPCBank> findTop5ByTitleContainingIgnoreCaseOrContentContainingIgnoreCase(String title, String content);
         // JSON-aware search methods for structured content
         @Query(value = """
 

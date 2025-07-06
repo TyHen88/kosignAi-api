@@ -290,20 +290,5 @@ public class TitleMatchingService {
             return "FUZZY_MATCH";
         }
     }
-    
-    /**
-     * Gets the best matching title for a simple query
-     */
-    public Optional<TitleMatchResult> getBestMatch(String userQuery) {
-        List<TitleMatchResult> matches = matchTitles(userQuery, 1);
-        return matches.isEmpty() ? Optional.empty() : Optional.of(matches.get(0));
-    }
-    
-    /**
-     * Checks if a query has strong title matches
-     */
-    public boolean hasStrongMatches(String userQuery) {
-        List<TitleMatchResult> matches = matchTitles(userQuery, 3);
-        return !matches.isEmpty() && matches.get(0).getMatchScore() > 50.0;
-    }
+
 } 

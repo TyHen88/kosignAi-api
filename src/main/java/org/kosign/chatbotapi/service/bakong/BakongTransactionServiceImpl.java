@@ -107,7 +107,7 @@ public class BakongTransactionServiceImpl implements BakongTransactionService {
                 successfulChecks.incrementAndGet();
                 log.info("✅ Transaction check #{} completed successfully for hash: {} in {} ms (attempt {})", 
                     checkNumber, transactionHash, duration.toMillis(), attempt);
-                
+                System.err.println("Response: " + response);
                 return response;
                 
             } catch (RemoteException e) {
@@ -206,6 +206,7 @@ public class BakongTransactionServiceImpl implements BakongTransactionService {
     }
 
     private void validateApiResponse(BakongTransactionResponse response, String requestHash) {
+        System.err.println("response: " + response);
         if (response.getResponseCode() == null) {
             log.error("🚫 Invalid response code from Bakong API: {}", response.getResponseCode());
             throw new BusinessException(StatusCode.BAD_REQUEST, 

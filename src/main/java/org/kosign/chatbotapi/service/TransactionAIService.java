@@ -41,7 +41,7 @@ public class TransactionAIService {
         "payment issue", "money not received", "transfer problem", "payment stuck",
         "transaction pending", "payment not working", "failed payment", "transaction failed",
         "money missing", "payment not completed", "transfer not received", "bakong error",
-        "payment gateway", "transaction hash", "payment timeout", "money lost"
+        "payment gateway", "transaction hash", "payment timeout", "money lost", "Hash", "Amount", "Currency"
     };
 
     // Performance metrics
@@ -218,33 +218,32 @@ public class TransactionAIService {
      */
     public String getTransactionDetailsPrompt() {
         return """
-            🔍 **Transaction Status Check**
-            
-            To help you check your transaction status, I need the following information:
-            
-            📋 **Required Details:**
-            
-            1. 🏷️ **Transaction Hash**
-               - Usually 8-64 characters
-               - Contains only letters and numbers
-               - Example: `c250339a` or `abc123def456`
-            
-            2. 💰 **Transaction Amount**
-               - The exact amount you sent/received
-               - Example: `50` or `25.75`
-            
-            3. 💱 **Currency**
-               - Must be either `USD` or `KHR`
-            
-            
-            💡 **Example:**
-            ```
-            Hash: c250339a
-            Amount: 50
-            Currency: USD
-            ```
-            
-            ℹ️ Once you provide this information, I'll check your transaction status immediately.
+                Check Transaction
+                
+                Please provide the following details:
+                
+                📋 Required Info:
+                
+                🏷️ Transaction Hash
+                
+                8–64 characters (letters & numbers)
+                
+                e.g., c250339a or abc123def456
+                
+                💰 Amount
+                
+                Exact value sent/received
+                
+                e.g., 50 or 25.75
+                
+                💱 Currency
+                
+                USD or KHR only
+                
+                💡 Example:
+                Hash: c250339a Amount: 50 Currency: USD
+                
+                ℹ️ Once you provide this, I’ll check your transaction status right away.
             """;
     }
 

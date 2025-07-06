@@ -20,94 +20,12 @@ public class JsonResponseService {
     
     private static final Logger logger = LoggerFactory.getLogger(JsonResponseService.class);
     private final ObjectMapper objectMapper = new ObjectMapper();
-    
-    /**
-     * Creates a structured JSON response from title match results
-     */
-    public String createStructuredResponse(List<TitleMatchResult> matchResults, String userQuery) {
-        try {
-            ObjectNode response = objectMapper.createObjectNode();
-            
-            // Add metadata
-            response.put("userQuery", userQuery);
-            response.put("timestamp", System.currentTimeMillis());
-            response.put("totalResults", matchResults.size());
-            
-            // Add match summary
-            ObjectNode matchSummary = objectMapper.createObjectNode();
-            if (!matchResults.isEmpty()) {
-                TitleMatchResult bestMatch = matchResults.get(0);
-                matchSummary.put("bestMatchScore", bestMatch.getMatchScore());
-                matchSummary.put("bestMatchType", bestMatch.getMatchType());
-                matchSummary.put("confidenceLevel", bestMatch.getConfidenceLevel());
-                matchSummary.put("hasHighConfidenceMatch", bestMatch.isHighConfidence());
-            }
-            response.set("matchSummary", matchSummary);
-            
-            // Add detailed results
-            ArrayNode results = objectMapper.createArrayNode();
-            for (TitleMatchResult match : matchResults) {
-                ObjectNode resultNode = createResultNode(match);
-                results.add(resultNode);
-            }
-            response.set("results", results);
-            
-            return objectMapper.writeValueAsString(response);
-            
-        } catch (JsonProcessingException e) {
-            logger.error("Error creating JSON response", e);
-            return createErrorResponse("Failed to create structured response", userQuery);
-        }
-    }
-    
+
+
     /**
      * Creates a result node for a single match
      */
-    private ObjectNode createResultNode(TitleMatchResult match) {
-        ObjectNode resultNode = objectMapper.createObjectNode();
-        
-        // Basic match information
-        resultNode.put("title", match.getTitle());
-        resultNode.put("url", match.getUrl());
-        resultNode.put("matchScore", match.getMatchScore());
-        resultNode.put("matchType", match.getMatchType());
-        resultNode.put("confidenceLevel", match.getConfidenceLevel());
-        
-        // Matched keywords
-        ArrayNode keywordsArray = objectMapper.createArrayNode();
-        if (match.getMatchedKeywords() != null) {
-            match.getMatchedKeywords().forEach(keywordsArray::add);
-        }
-        resultNode.set("matchedKeywords", keywordsArray);
-        
-        // Content processing
-        if (match.getContentJson() != null && !match.getContentJson().trim().isEmpty()) {
-            try {
-                JsonNode contentJson = objectMapper.readTree(match.getContentJson());
-                resultNode.set("structuredContent", processStructuredContent(contentJson));
-            } catch (JsonProcessingException e) {
-                logger.warn("Failed to parse JSON content for title: {}", match.getTitle());
-                resultNode.put("rawContent", extractTextContent(match.getContent()));
-            }
-        } else {
-            resultNode.put("rawContent", extractTextContent(match.getContent()));
-        }
-        
-        // Page metadata
-        ObjectNode metadata = objectMapper.createObjectNode();
-        if (match.getPage() != null) {
-            metadata.put("pageId", match.getPage().getId());
-            metadata.put("status", match.getPage().getStatus());
-            metadata.put("depth", match.getPage().getDepth());
-            if (match.getPage().getUpdatedAt() != null) {
-                metadata.put("lastUpdated", match.getPage().getUpdatedAt().toString());
-            }
-        }
-        resultNode.set("metadata", metadata);
-        
-        return resultNode;
-    }
-    
+
     /**
      * Processes structured JSON content for better AI understanding
      */
@@ -242,32 +160,7 @@ public class JsonResponseService {
         
         return cleaned;
     }
-    
-    /**
-     * Creates a simple JSON response for a single best match
-     */
-    public String createSimpleResponse(TitleMatchResult match, String userQuery) {
-        try {
-            ObjectNode response = objectMapper.createObjectNode();
-            
-            response.put("userQuery", userQuery);
-            response.put("timestamp", System.currentTimeMillis());
-            response.put("hasMatch", match != null);
-            
-            if (match != null) {
-                response.set("result", createResultNode(match));
-            } else {
-                response.put("message", "No matching content found for the query");
-            }
-            
-            return objectMapper.writeValueAsString(response);
-            
-        } catch (JsonProcessingException e) {
-            logger.error("Error creating simple JSON response", e);
-            return createErrorResponse("Failed to create response", userQuery);
-        }
-    }
-    
+
     /**
      * Creates an error response
      */
@@ -283,63 +176,6 @@ public class JsonResponseService {
         } catch (JsonProcessingException e) {
             logger.error("Error creating error response", e);
             return "{\"error\":\"System error occurred\",\"hasMatch\":false}";
-        }
-    }
-    
-    /**
-     * Creates a response optimized for AI processing
-     */
-    public String createAIOptimizedResponse(List<TitleMatchResult> matchResults, String userQuery) {
-        try {
-            ObjectNode response = objectMapper.createObjectNode();
-            
-            // Add query context
-            response.put("userQuery", userQuery);
-            response.put("intent", detectQueryIntent(userQuery));
-            response.put("hasRelevantData", !matchResults.isEmpty());
-            
-            // Add concise match information
-            if (!matchResults.isEmpty()) {
-                TitleMatchResult bestMatch = matchResults.get(0);
-                
-                ObjectNode primaryResult = objectMapper.createObjectNode();
-                primaryResult.put("title", bestMatch.getTitle());
-                primaryResult.put("confidence", bestMatch.getConfidenceLevel());
-                primaryResult.put("matchType", bestMatch.getMatchType());
-                
-                // Add only the most relevant content
-                if (bestMatch.getContentJson() != null) {
-                    try {
-                        JsonNode contentJson = objectMapper.readTree(bestMatch.getContentJson());
-                        primaryResult.set("keyInformation", extractKeyInformation(contentJson, userQuery));
-                    } catch (JsonProcessingException e) {
-                        primaryResult.put("keyInformation", extractTextContent(bestMatch.getContent()));
-                    }
-                } else {
-                    primaryResult.put("keyInformation", extractTextContent(bestMatch.getContent()));
-                }
-                
-                response.set("primaryResult", primaryResult);
-                
-                // Add additional results if they're high confidence
-                ArrayNode additionalResults = objectMapper.createArrayNode();
-                for (int i = 1; i < Math.min(matchResults.size(), 3); i++) {
-                    TitleMatchResult additionalMatch = matchResults.get(i);
-                    if (additionalMatch.isHighConfidence() || additionalMatch.isMediumConfidence()) {
-                        ObjectNode additionalNode = objectMapper.createObjectNode();
-                        additionalNode.put("title", additionalMatch.getTitle());
-                        additionalNode.put("confidence", additionalMatch.getConfidenceLevel());
-                        additionalResults.add(additionalNode);
-                    }
-                }
-                response.set("additionalResults", additionalResults);
-            }
-            
-            return objectMapper.writeValueAsString(response);
-            
-        } catch (JsonProcessingException e) {
-            logger.error("Error creating AI-optimized response", e);
-            return createErrorResponse("Failed to create AI-optimized response", userQuery);
         }
     }
     

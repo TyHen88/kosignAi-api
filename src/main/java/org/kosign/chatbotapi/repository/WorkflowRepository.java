@@ -11,6 +11,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 public interface WorkflowRepository extends JpaRepository<Workflow, Long>{
+    List<Workflow> findTop5ByTitleContainingIgnoreCaseOrGoalStatementContainingIgnoreCase(String title, String goal);
 //
 //    @Query("""
 //            SELECT w FROM Workflow w

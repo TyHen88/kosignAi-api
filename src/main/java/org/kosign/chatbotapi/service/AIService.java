@@ -639,7 +639,7 @@ public class AIService {
         try {
             // Try to extract transaction data from the user query
             TransactionData extractedData = extractTransactionData(userQuery);
-
+            System.err.println("extractedData" + extractedData);
             if (extractedData.isComplete()) {
                 // All data is available, proceed with transaction check
                 logger.info("Complete transaction data found, checking status");
@@ -655,7 +655,6 @@ public class AIService {
                         "I understand you're experiencing a transaction issue. Let me help you check the transaction status.\n\n");
 
                 if (extractedData.hasPartialData()) {
-                    response.append("I found some information from your message:\n");
                     if (extractedData.hash != null) {
                         response.append("- Hash: ").append(extractedData.hash).append("\n");
                     }
@@ -688,20 +687,34 @@ public class AIService {
         // Examples: "hash: c250339a", "transaction c250339a", "my hash is abc123",
         // "c250339a"
         Pattern hashPattern = Pattern.compile(
-                "(?:hash|transaction|id)[:\\s]+([a-zA-Z0-9]{6,})|" + // "hash: abc123"
-                        "\\bhash\\s+([a-zA-Z0-9]{6,})|" + // "hash abc123"
-                        "\\b([a-zA-Z0-9]{8,})\\b(?=\\s|$|,|\\.|!|\\?)", // standalone alphanumeric 8+ chars
-                Pattern.CASE_INSENSITIVE);
+                // Matches: "hash: abc123", "transaction: abc123", "id: abc123" 
+                "(?:hash|transaction|id|ref|reference)[:\\s]+([\\w-]{4,64})|" +
+
+                        // Matches: "hash abc123" but not "transaction error"
+                        "\\b(?:hash|id|ref|reference)\\s+([\\w-]{4,64})|" +
+
+                        // Matches: standalone alphanumeric hash with optional dashes
+                        // Must be at least 6 chars to avoid matching error/other words
+                        "\\b([a-zA-Z0-9][\\w-]{5,63})\\b",
+
+                Pattern.CASE_INSENSITIVE
+        );
         Matcher hashMatcher = hashPattern.matcher(userQuery);
         if (hashMatcher.find()) {
-            // Get the first non-null group
+            String matchedHash = null;
             for (int i = 1; i <= hashMatcher.groupCount(); i++) {
-                if (hashMatcher.group(i) != null) {
-                    data.hash = hashMatcher.group(i).trim();
+                String group = hashMatcher.group(i);
+                if (group != null && !group.trim().isEmpty() 
+                    && !group.trim().equalsIgnoreCase("error")) { // Exclude "error" as hash
+                    matchedHash = group.trim();
                     break;
                 }
             }
+            if (matchedHash != null) {
+                data.hash = matchedHash;
+            }
         }
+
 
         // Enhanced pattern for amount - handle various formats
         // Examples: "amount: 50", "50 USD", "$50", "sum 100", "paid 25.50"

@@ -1,5 +1,6 @@
 package org.kosign.chatbotapi.controller;
 
+import lombok.RequiredArgsConstructor;
 import org.kosign.chatbotapi.service.AIService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,12 +16,14 @@ import java.util.Map;
 @RestController
 @RequestMapping("/api")
 @CrossOrigin(origins = "*") // Allow CORS for frontend integration
+@RequiredArgsConstructor
 public class ChatController {
 
     private static final Logger logger = LoggerFactory.getLogger(ChatController.class);
 
     @Autowired
     private AIService aiService;
+
 
     @PostMapping(value = "/query", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<Map<String, Object>> processQuery(
@@ -39,7 +42,6 @@ public class ChatController {
             logger.info("Received chat query: {}", fullPrompt);
 
             String response = aiService.processUserQuery(fullPrompt);
-
             Map<String, Object> result = new HashMap<>();
             result.put("success", true);
             result.put("query", userQuery);
