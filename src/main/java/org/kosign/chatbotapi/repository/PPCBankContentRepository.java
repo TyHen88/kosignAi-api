@@ -14,126 +14,75 @@ import java.util.List;
 @Repository
 public interface PPCBankContentRepository extends JpaRepository<PPCBank, Long> {
         List<PPCBank> findTop5ByTitleContainingIgnoreCaseOrContentContainingIgnoreCase(String title, String content);
-        // JSON-aware search methods for structured content
-        @Query(value = """
-
-                SELECT * FROM tb_ppc_bank
-                        WHERE status = 200 AND (
-                            -- Search in JSON title
-                            (content_json->>'title') ILIKE CONCAT('%', :keyword, '%')
-                        
-                            -- Search in section headings
-                            OR EXISTS (
-                                SELECT 1 FROM jsonb_array_elements(content_json->'sections') AS section
-                                WHERE (section->>'heading') ILIKE CONCAT('%', :keyword, '%')
-                            )
-                        
-                            -- Search in section paragraphs (only if paragraphs is array)
-                            OR EXISTS (
-                                SELECT 1 FROM jsonb_array_elements(content_json->'sections') AS section
-                                WHERE jsonb_typeof(section->'paragraphs') = 'array'
-                                  AND EXISTS (
-                                    SELECT 1 FROM jsonb_array_elements_text(section->'paragraphs') AS paragraph
-                                    WHERE paragraph ILIKE CONCAT('%', :keyword, '%')
-                                  )
-                            )
-                        
-                            -- Search in section lists (only if list is array)
-                            OR EXISTS (
-                                SELECT 1 FROM jsonb_array_elements(content_json->'sections') AS section
-                                WHERE jsonb_typeof(section->'list') = 'array'
-                                  AND EXISTS (
-                                    SELECT 1 FROM jsonb_array_elements_text(section->'list') AS list_item
-                                    WHERE list_item ILIKE CONCAT('%', :keyword, '%')
-                                  )
-                            )
-                            -- Search in table data
-                        
-                            OR EXISTS (
-                                SELECT 1 FROM jsonb_array_elements(content_json->'tables') AS table_data,
-                                              jsonb_array_elements(table_data->'rows') AS row,
-                                              jsonb_array_elements_text(row) AS cell
-                                WHERE cell ILIKE CONCAT('%', :keyword, '%')
-                            )
-                        
-                            -- Fallback to full-text search if available
-                            OR (fts_vector IS NOT NULL AND fts_vector @@ websearch_to_tsquery('english', :keyword))
-                        
-                            -- Final fallback to regular text search (unaccented)
-                            OR (
-                                unaccent(lower(title)) ILIKE unaccent(lower(CONCAT('%', :keyword, '%')))
-                                OR unaccent(lower(content)) ILIKE unaccent(lower(CONCAT('%', :keyword, '%')))
-                            )
-                        )
-                        ORDER BY
-                            -- Prioritize JSON title matches
-                            CASE WHEN (content_json->>'title') ILIKE CONCAT('%', :keyword, '%') THEN 100 ELSE 0 END +
-                            -- Then section heading matches
-                            CASE WHEN EXISTS (
-                                SELECT 1 FROM jsonb_array_elements(content_json->'sections') AS section
-                                WHERE (section->>'heading') ILIKE CONCAT('%', :keyword, '%')
-                            ) THEN 80 ELSE 0 END +
-                            -- Then FTS rank if available
-                            CASE
-                                WHEN fts_vector IS NOT NULL THEN ts_rank(fts_vector, websearch_to_tsquery('english', :keyword)) * 50
-                                ELSE 0
-                            END DESC,
-                            updated_at DESC
-                        LIMIT 20
-                        """, nativeQuery = true)
-        List<PPCBank> searchByFullText(@Param("keyword") String keyword);
 
         @Query(value = """
 
-                SELECT * FROM tb_ppc_bank
-                        WHERE status = 200 AND (
-                            (content_json->>'title') ILIKE CONCAT('%', :combinedKeywords, '%')
-                        
-                            OR EXISTS (
-                                SELECT 1 FROM jsonb_array_elements(content_json->'sections') AS section
-                                WHERE
-                                    (section->>'heading') ILIKE CONCAT('%', :combinedKeywords, '%')
-                        
-                                    OR (
-                                        jsonb_typeof(section->'paragraphs') = 'array' AND EXISTS (
-                                            SELECT 1 FROM jsonb_array_elements_text(section->'paragraphs') AS paragraph
-                                            WHERE paragraph ILIKE CONCAT('%', :combinedKeywords, '%')
-                                        )
-                                    )
-                        
-                                    OR (
-                                        jsonb_typeof(section->'list') = 'array' AND EXISTS (
-                                            SELECT 1 FROM jsonb_array_elements_text(section->'list') AS list_item
-                                            WHERE list_item ILIKE CONCAT('%', :combinedKeywords, '%')
-                                        )
-                                    )
-                            )
-                        
-                            OR EXISTS (
-                                SELECT 1 FROM jsonb_array_elements(content_json->'tables') AS table_data,
-                                              jsonb_array_elements(table_data->'rows') AS row,
-                                              jsonb_array_elements_text(row) AS cell
-                                WHERE cell ILIKE CONCAT('%', :combinedKeywords, '%')
-                            )
-                        
-                            OR (
-                                fts_vector IS NOT NULL AND fts_vector @@ websearch_to_tsquery('english', :combinedKeywords)
-                            )
-                        
-                            OR (
-                                unaccent(lower(title)) ILIKE unaccent(lower(CONCAT('%', :combinedKeywords, '%')))
-                                OR unaccent(lower(content)) ILIKE unaccent(lower(CONCAT('%', :combinedKeywords, '%')))
-                            )
-                        )
-                        ORDER BY
-                            CASE WHEN (content_json->>'title') ILIKE CONCAT('%', :combinedKeywords, '%') THEN 100 ELSE 0 END +
-                            CASE WHEN EXISTS (
-                                SELECT 1 FROM jsonb_array_elements(content_json->'sections') AS section
-                                WHERE (section->>'heading') ILIKE CONCAT('%', :combinedKeywords, '%')
-                            ) THEN 80 ELSE 0 END DESC,
-                            updated_at DESC
-                        LIMIT 20
-                        """, nativeQuery = true)
+                WITH keywords AS (
+                 SELECT lower(word) AS keyword
+                 FROM regexp_split_to_table(?, '\\s+') AS word
+                 WHERE lower(word) NOT IN (
+                   'the', 'a', 'an', 'of', 'to', 'is', 'in', 'on', 'at', 'for',
+                   'with', 'and', 'or', 'from', 'by', 'check', 'me', 'tell', 'about',
+                   'this', 'that', 'it', 'you', 'your'
+                 )
+                ),
+                matches AS (
+                 SELECT
+                   tb.*,
+                   kw.keyword
+                 FROM tb_ppc_bank tb
+                 JOIN keywords kw ON TRUE
+                 WHERE tb.status = 200
+                   AND (
+                     unaccent(lower(tb.title)) ILIKE unaccent(CONCAT('%', kw.keyword, '%'))
+                     OR unaccent(lower(tb.content)) ILIKE unaccent(CONCAT('%', kw.keyword, '%'))
+                     OR (tb.content_json ->> 'title') ILIKE CONCAT('%', kw.keyword, '%')
+                     OR EXISTS (
+                       SELECT 1
+                       FROM jsonb_array_elements(tb.content_json -> 'sections') AS section
+                       WHERE (section ->> 'heading') ILIKE CONCAT('%', kw.keyword, '%')
+                         OR (
+                           jsonb_typeof(section -> 'paragraphs') = 'array'
+                           AND EXISTS (
+                             SELECT 1
+                             FROM jsonb_array_elements_text(section -> 'paragraphs') AS paragraph
+                             WHERE paragraph ILIKE CONCAT('%', kw.keyword, '%')
+                           )
+                         )
+                         OR (
+                           jsonb_typeof(section -> 'list') = 'array'
+                           AND EXISTS (
+                             SELECT 1
+                             FROM jsonb_array_elements_text(section -> 'list') AS list_item
+                             WHERE list_item ILIKE CONCAT('%', kw.keyword, '%')
+                           )
+                         )
+                     )
+                     OR EXISTS (
+                       SELECT 1
+                       FROM jsonb_array_elements(tb.content_json -> 'tables') AS table_data,
+                            jsonb_array_elements(table_data -> 'rows') AS row,
+                            jsonb_array_elements_text(row) AS cell
+                       WHERE cell ILIKE CONCAT('%', kw.keyword, '%')
+                     )
+                     OR (
+                       tb.fts_vector IS NOT NULL
+                       AND tb.fts_vector @@ plainto_tsquery('english', kw.keyword)
+                     )
+                   )
+                ),
+                ranked_matches AS (
+                 SELECT *, COUNT(*) OVER (PARTITION BY id) AS match_count
+                 FROM matches
+                )
+                SELECT *
+                FROM ranked_matches
+                WHERE match_count >= 2
+                ORDER BY updated_at DESC
+                LIMIT 200
+               
+                
+                """, nativeQuery = true)
         List<PPCBank> findByMultipleKeywordsCombined(@Param("combinedKeywords") String combinedKeywords);
 
         @Query(value = """

@@ -1,6 +1,7 @@
 package org.kosign.chatbotapi.payload.workflow;
 
 import java.util.List;
+import java.util.Map;
 
 import org.kosign.chatbotapi.components.common.Pagination;
 
@@ -19,16 +20,21 @@ public class WorkflowResponse {
     private String imageUrl;
     private String createdAt;
     private String updatedAt;
-    private String category;
+    private Long categoryId;
+    private String categoryName;
+    private String metadata;
+
 
     @Builder
-    public WorkflowResponse(Long id, String title, String goalStatement, String imageUrl, String createdAt, String updatedAt, String category) {
+    public WorkflowResponse(Long id, String title, String goalStatement, String imageUrl, String createdAt, String updatedAt, Long categoryId,String categoryName, String metadata) {
         this.id = id;
         this.title = title;
         this.goalStatement = goalStatement;
         this.imageUrl = imageUrl;
         this.createdAt = createdAt;
         this.updatedAt = updatedAt;
-        this.category = category;
+        this.categoryId = categoryId;
+        this.categoryName = categoryName;
+        this.metadata = metadata;
     }
 }

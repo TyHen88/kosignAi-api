@@ -72,7 +72,9 @@ public class SecurityConfig {
             "/v1/check_transaction_by_short_hash",
             "/v1/renew_token",
             "/api/**",
-            "/api/workflows/**"
+            "/api/workflows/**",
+            "/api/categories/**",
+            "/api/search-config/**"
     };
 
     @Bean

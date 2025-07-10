@@ -32,7 +32,8 @@ public class CacheConfig {
             "banking-search-cache",
             "domain-analysis-cache",
             "conversation-context-cache",
-            "bakong-tokens"
+            "bakong-tokens",
+            "search-config"
         ));
         
         // Allow dynamic cache creation

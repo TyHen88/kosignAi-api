@@ -2,6 +2,8 @@ package org.kosign.chatbotapi.payload.workflow;
 
 import org.springframework.beans.factory.annotation.Value;
 
+import java.util.Map;
+
 public interface IGetWorkflow {
     @Value("#{target.id}")
     Long getId();
@@ -9,18 +11,24 @@ public interface IGetWorkflow {
     @Value("#{target.title}")
     String getTitle();
 
-    @Value("#{target.goal_statement}")
+    @Value("#{target.goalStatement}")
     String getGoalStatement();
 
-    @Value("#{target.image_url}")
+    @Value("#{target.imageUrl}")
     String getImageUrl();
 
-    @Value("#{target.created_at}")
+    @Value("#{target.createdAt}")
     String getCreatedAt();
 
-    @Value("#{target.updated_at}")
+    @Value("#{target.updatedAt}")
     String getUpdatedAt();
 
-    @Value("#{target.category}")
-    String getCategory();
+    @Value("#{target.categoryId}")
+    Long getCategoryId();
+
+    @Value("#{target.categoryName}")
+    String getCategoryName();
+
+    @Value("#{target.metadata}")
+    String getMetadata();
 }

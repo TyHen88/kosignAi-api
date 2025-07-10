@@ -83,8 +83,7 @@ dependencies {
 	// Spring Retry
 	implementation 'org.springframework.retry:spring-retry'
 
-	// Spring Cloud Gateway
-	// implementation 'org.springframework.cloud:spring-cloud-starter-gateway'
+	implementation 'com.vladmihalcea:hibernate-types-60:2.21.1'
 }
 
 dependencyManagement {

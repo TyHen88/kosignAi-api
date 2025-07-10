@@ -41,7 +41,10 @@ public class TransactionAIService {
         "payment issue", "money not received", "transfer problem", "payment stuck",
         "transaction pending", "payment not working", "failed payment", "transaction failed",
         "money missing", "payment not completed", "transfer not received", "bakong error",
-        "payment gateway", "transaction hash", "payment timeout", "money lost", "Hash", "Amount", "Currency"
+        "payment gateway", "transaction hash", "payment timeout", "money lost", 
+        "verify transaction", "payment verification", "transaction receipt", "payment receipt",
+        "bakong hash", "payment confirmation", "transfer status", "transaction inquiry",
+        "external transaction reference", "payment error", "transfer failed"
     };
 
     // Performance metrics
@@ -276,50 +279,47 @@ public class TransactionAIService {
         // Enhanced status determination with more specific icons
         TransactionStatus status = determineTransactionStatus(response);
         
-        sb.append(status.getIcon()).append(" **Transaction Status: ").append(status.getDisplayText()).append("**\n\n");
+        sb.append("**Your Transaction is ").append(status.getDisplayText()).append("**\n\n");
         
         // Comprehensive transaction details with better formatting
-        sb.append("📋 **Transaction Details:**\n");
-        // sb.append("```\n");
+        sb.append("**Information**\n\n");
+        sb.append("</br>");
         // sb.append("Hash:        ").append(response.getHash()).append("\n");
-        
+        if (response.getResponseMessage() != null) {
+            sb.append(String.format("%-25s %s\n", "Status:", response.getResponseMessage() + " ✅"));
+        }
         if (response.getFromAccountId() != null) {
-            sb.append("From:        ").append(maskAccountId(response.getFromAccountId())).append("\n");
+            sb.append(String.format("%-25s %s\n", "Sender account ID:", response.getFromAccountId()));
         }
         if (response.getToAccountId() != null) {
-            sb.append("To:          ").append(maskAccountId(response.getToAccountId())).append("\n");
+            sb.append(String.format("%-25s %s\n", "Recipient Bank ID:", response.getToAccountId()));
         }
+
+        sb.append(String.format("%-25s %s\n", "Amount:", formatAmount(response.getAmount(), response.getCurrency())));
         
-        sb.append("Amount:      ").append(formatAmount(response.getAmount(), response.getCurrency())).append("\n");
-        
-        if (response.getDescription() != null && !response.getDescription().trim().isEmpty()) {
-            sb.append("Description: ").append(response.getDescription()).append("\n");
-        }
-        
-        if (response.getTrackingStatus() != null) {
-            sb.append("Status:      ").append(response.getTrackingStatus()).append("\n");
+        if (response.getDescription() != null ) {
+            sb.append(String.format("%-25s %s\n", "Description:", response.getDescription()));
         }
         
         if (response.getCreatedDateMs() != null) {
-            sb.append("Created:     ").append(formatTimestamp(response.getCreatedDateMs())).append("\n");
+            sb.append(String.format("%-25s %s\n", "Transaction Date:", formatTimestamp(response.getCreatedDateMs())));
         }
         
         if (response.getAcknowledgedDateMs() != null) {
-            sb.append("Confirmed:   ").append(formatTimestamp(response.getAcknowledgedDateMs())).append("\n");
+            sb.append(String.format("%-25s %s\n", "Confirmed:", formatTimestamp(response.getAcknowledgedDateMs())));
         }
         
         if (response.getReceiverBank() != null) {
-            sb.append("Bank:        ").append(response.getReceiverBank()).append("\n");
+            sb.append(String.format("%-25s %s\n", "Bank:", response.getReceiverBank()));
         }
-        
-        // sb.append("```\n\n");
-        
+
+        sb.append("</br>");
         // Status-specific guidance with enhanced messaging
         sb.append(status.getGuidanceMessage());
-        
+
         // Performance information
         sb.append(String.format("\n\n⚡ *Checked in %d ms*", checkDuration.toMillis()));
-        
+
         return sb.toString();
     }
 
@@ -453,13 +453,16 @@ public class TransactionAIService {
 
     // Enhanced transaction status enum
     private enum TransactionStatus {
-        SUCCESSFUL("✅", "SUCCESSFUL", 
-            "🎉 **Great News!** Your transaction has been completed successfully.\n\n" +
-            "💡 **What this means:**\n" +
-            "• The money has been transferred successfully\n" +
-            "• The transaction is finalized and cannot be reversed\n" +
-            "• You can expect the funds to be available in the recipient's account"),
-            
+        SUCCESSFUL("", "Success!",
+                "**Great news! Your transaction with PPCBank has been successfully completed.** 🎉\n\n" +
+                        "✅ PPCBank has verified and processed your payment securely.\n" +
+                        "🔒 This transaction is permanently recorded and protected.\n" +
+                        "💸 The funds are now being delivered to the recipient’s account.\n\n" +
+                        "**💡 PPCBank Tip:** Save this confirmation for your records.\n" +
+                        "You can always view your full transaction history in the PPCBank Mobile App."
+        ),
+
+
         FAILED("❌", "FAILED", 
             "⚠️ **Transaction Failed** - Your transaction could not be completed.\n\n" +
             "🔧 **Next Steps:**\n" +

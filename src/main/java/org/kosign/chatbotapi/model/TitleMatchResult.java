@@ -3,6 +3,7 @@ package org.kosign.chatbotapi.model;
 import lombok.Builder;
 import lombok.Data;
 import org.kosign.chatbotapi.domains.PPCBank;
+import org.kosign.chatbotapi.domains.Workflow;
 
 import java.util.List;
 
@@ -17,6 +18,8 @@ public class TitleMatchResult {
      * The matched page from the database
      */
     private PPCBank page;
+
+    private Workflow workflow;
     
     /**
      * The confidence score of the match (0.0 to 100.0+)
