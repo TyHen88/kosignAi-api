@@ -1,4 +1,4 @@
-package org.kosign.chatbotapi.util;
+package org.kosign.chatbotapi.utilAI;
 
 /**
  * Utility class for building AI prompts with structured formatting

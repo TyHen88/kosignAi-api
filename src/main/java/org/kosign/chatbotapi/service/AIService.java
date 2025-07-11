@@ -3,37 +3,27 @@ package org.kosign.chatbotapi.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
-import org.kosign.chatbotapi.domains.PPCBank;
-import org.kosign.chatbotapi.model.AiToolCallResponse;
 import org.kosign.chatbotapi.model.ConversationContext;
-import org.kosign.chatbotapi.model.SessionContext;
 import org.kosign.chatbotapi.model.TitleMatchResult;
 import org.kosign.chatbotapi.repository.PPCBankContentRepository;
 import org.kosign.chatbotapi.repository.WorkflowRepository;
 import org.kosign.chatbotapi.service.workflow.WorkflowServices;
-import org.kosign.chatbotapi.util.PromptBuilder;
+import org.kosign.chatbotapi.utilAI.PromptBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Paths;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.Base64;
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
 
 @Service
 public class AIService {

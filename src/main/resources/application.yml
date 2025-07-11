@@ -205,6 +205,13 @@ server:
 password:
   encryption:
     key: mytestkeyasdddds
+# token encryption
+app:
+  encryption:
+    secret-key: mytestkeyasdddds
+    iv: 16
+  security:
+    mask-token: true
 
 # JWT Configuration
 jwt:

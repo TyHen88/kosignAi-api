@@ -9,6 +9,7 @@ import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.SecureRandom;
 import java.util.Base64;
 import java.util.UUID;
 
@@ -95,5 +96,14 @@ public class PasswordUtils {
         for(byte b: a)
             sb.append(String.format("%02x", b));
         return sb.toString();
+    }
+    public static void main(String[] args) {
+        byte[] key = new byte[32]; // 256 bits
+        new SecureRandom().nextBytes(key);
+        StringBuilder sb = new StringBuilder();
+        for (byte b : key) {
+            sb.append(String.format("%02x", b));
+        }
+        System.out.println(sb.toString());
     }
 }

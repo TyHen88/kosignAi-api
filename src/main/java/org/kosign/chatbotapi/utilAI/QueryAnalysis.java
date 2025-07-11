@@ -1,4 +1,4 @@
-package org.kosign.chatbotapi.util;
+package org.kosign.chatbotapi.utilAI;
 
 /**
  * Utility class for analyzing user queries and determining response structure needs
