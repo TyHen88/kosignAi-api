@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.Base64;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 
 @Service
 public class ApiRequestService {
@@ -92,13 +93,26 @@ public class ApiRequestService {
         ApiRequest request = getRequestById(requestId);
         return executeRequest(request);
     }
+    //execute by name
+    public ApiResponse executeRequest(String name) {
+        System.err.println("name::" + name);
+        Optional<ApiRequest> request = apiRequestRepository.findByName(name);
+        if (request.isEmpty()) {
+            throw new ResourceNotFoundException("Request not found with name: " + name);
+        }
+        return executeRequest(request.get());
+    }
+
 
     public ApiResponse executeRequest(ApiRequest request) {
+        System.err.println("Request: " + request.getKeywords() + request.getBody()+ request.getUrl()
+        + request.getUrl() + request.getAuthKey() + request.getAuthValue()
+        );
         try {
             HttpHeaders headers = prepareHeaders(request);
             String finalUrl = prepareUrl(request);
             HttpEntity<String> entity = prepareEntity(request, headers);
-
+            System.err.println("entity" + entity);
             ResponseEntity<String> response = executeHttpRequest(request, finalUrl, entity);
             return saveSuccessfulResponse(request, response);
 
@@ -110,29 +124,43 @@ public class ApiRequestService {
     private HttpHeaders prepareHeaders(ApiRequest request) {
         HttpHeaders headers = new HttpHeaders();
 
-        // Handle authentication
-        switch (request.getAuthType()) {
+        // Handle authentication - fixed to properly check authType case
+        String authType = request.getAuthType() != null ? request.getAuthType().toUpperCase() : "NONE";
+
+        switch (authType) {
             case "BASIC":
                 String basicAuth = "Basic " + Base64.getEncoder()
                         .encodeToString((request.getAuthKey() + ":" + request.getAuthValue()).getBytes());
                 headers.set("Authorization", basicAuth);
                 break;
             case "BEARER":
-                headers.setBearerAuth(request.getAuthValue());
+                // Ensure the token is properly formatted
+                String token = request.getAuthValue();
+                if (token != null && !token.startsWith("Bearer ")) {
+                    token = "Bearer " + token;
+                }
+                headers.set("Authorization", token);
                 break;
             case "API_KEY":
-                headers.set(request.getAuthKey(), request.getAuthValue());
+                // Support both header and query param API keys
+                if (request.getAuthKey() != null && request.getAuthValue() != null) {
+                    headers.set(request.getAuthKey(), request.getAuthValue());
+                }
                 break;
             case "NONE":
+                // No authentication needed
                 break;
             default:
-                throw new IllegalArgumentException("Unsupported authentication type: " + request.getAuthType());
+                throw new IllegalArgumentException("Unsupported authentication type: " + authType);
         }
 
         // Add custom headers
         if (request.getHeaders() != null) {
-            request.getHeaders().forEach(header ->
-                    headers.add(header.getKey(), header.getValue()));
+            request.getHeaders().forEach(header -> {
+                if (header.getKey() != null && header.getValue() != null) {
+                    headers.add(header.getKey(), header.getValue());
+                }
+            });
         }
 
         return headers;

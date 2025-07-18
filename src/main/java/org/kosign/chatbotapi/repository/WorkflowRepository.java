@@ -24,7 +24,7 @@ public interface WorkflowRepository extends JpaRepository<Workflow, Long>{
 
     @Query(
             value = """
-                    SELECT DISTINCT w.*
+                    SELECT DISTINCT w.metadata
                     FROM tb_workflow w
                              LEFT JOIN tb_category c ON w.id = c.workflow_id
                              LEFT JOIN LATERAL regexp_split_to_table(:searchValue, '\\s+') AS word ON TRUE
@@ -36,7 +36,7 @@ public interface WorkflowRepository extends JpaRepository<Workflow, Long>{
                     """,
             nativeQuery = true
     )
-    List<Workflow> findAllActiveWorkflowsByTitle(@Param("searchValue") String searchValue);
+    List<String> findAllActiveWorkflowsByTitle(@Param("searchValue") String searchValue);
 
     @Query(
             value = """

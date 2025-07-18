@@ -1,12 +1,15 @@
 package org.kosign.chatbotapi.service;
 
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
 import org.kosign.chatbotapi.model.ConversationContext;
 import org.kosign.chatbotapi.model.TitleMatchResult;
+import org.kosign.chatbotapi.payload.workflow.WorkflowData;
 import org.kosign.chatbotapi.repository.PPCBankContentRepository;
 import org.kosign.chatbotapi.repository.WorkflowRepository;
+import org.kosign.chatbotapi.service.ApiRequestToolsService.ApiRequestService;
 import org.kosign.chatbotapi.service.workflow.WorkflowServices;
 import org.kosign.chatbotapi.utilAI.PromptBuilder;
 import org.slf4j.Logger;
@@ -67,9 +70,6 @@ public class AIService {
     private String deepSeekModel;
 
     @Autowired
-    private PPCBankContentRepository pageContentRepository;
-
-    @Autowired
     private TransactionAIService transactionAIService;
 
     // Add intelligent query processing services
@@ -85,11 +85,12 @@ public class AIService {
     @Autowired
     private SearchConfigService searchConfigService;
 
-    private WorkflowQueryService workflowQueryService;
-
-    private WorkflowServices workflowServices;
     @Autowired
     private WorkflowRepository workflowRepository;
+
+    @Autowired
+    private ApiRequestService apiRequestService;
+
 
     private final Map<String, ConversationContext> conversationContexts = new HashMap<>();
 
@@ -165,9 +166,10 @@ public class AIService {
             }
 
             var workflowData = workflowRepository.findAllActiveWorkflowsByTitle(englishQuery);
-            
+
             // Step 4: Check if it's a transaction inquiry
             if (transactionAIService.isTransactionInquiry(englishQuery)) {
+
                 logger.info("🔁 Transaction inquiry detected");
                 String response = handleTransactionInquiry(workflowData, userQuery, englishQuery, sessionId);
 
@@ -176,6 +178,7 @@ public class AIService {
                     !targetLanguage.equalsIgnoreCase("en") && !targetLanguage.equalsIgnoreCase("english")) {
                     response = translateText(response, targetLanguage);
                 }
+
 
                 logger.info("✅ Transaction response ready");
                 return response;
@@ -542,20 +545,41 @@ public class AIService {
     private String handleTransactionInquiry(Object medataData, String userQuery, String englishQuery, String sessionId) {
         logger.info("Handling transaction inquiry - Original: '{}', English: '{}'", userQuery, englishQuery);
         try {
-            // Extract transaction data from the ORIGINAL user query to preserve exact values
+            // Step 1: Check if user is asking "how to check transaction?"
+            if (isAskingHowToCheckTransaction(userQuery) || isAskingHowToCheckTransaction(englishQuery)) {
+                logger.info("🔍 User asking 'how to check transaction' - showing guide");
+                return transactionAIService.getTransactionDetailsPrompt();
+            }
+            
+            // Step 2: Extract transaction data from the ORIGINAL user query to preserve exact values
             TransactionData extractedData = extractTransactionData(userQuery);
             System.err.println("extractedData: " + extractedData.hash + " | " + extractedData.amount + " | " + extractedData.currency);
             
             if (extractedData.isComplete()) {
-                // All data is available, proceed with transaction check
-                logger.info("Complete transaction data found, checking status");
+                // Step 3: All data is available, proceed with transaction check
+                logger.info("✅ Complete transaction data found, proceeding with transaction check");
+                
+                // Check if workflow data exists and extract custom message
+                String customMessage = extractWorkflowMessage(medataData);
+                
+                if (customMessage != null && !customMessage.trim().isEmpty()) {
+                    logger.info("🔧 Using custom workflow message");
+                    // Set custom message to TransactionAIService
+                    transactionAIService.setCustomMessage(customMessage);
+                } else {
+                    logger.info("📝 No custom workflow message found, will use default message");
+                    // Clear any previous custom message to use default
+                    transactionAIService.clearCustomMessage();
+                }
+                
+                // Proceed with transaction check
                 return transactionAIService.checkTransactionStatus(
                         extractedData.hash,
                         extractedData.amount,
                         extractedData.currency);
             } else {
                 // Missing data, request more information
-                logger.info("Incomplete transaction data, requesting details");
+                logger.info("⚠️ Incomplete transaction data, requesting details");
                 StringBuilder response = new StringBuilder();
                 response.append(
                         "I understand you're experiencing a transaction issue. Let me help you check the transaction status.\n\n");
@@ -573,20 +597,7 @@ public class AIService {
                     response.append("\n");
                 }
 
-                // Get workflow data and build AI prompt using English query for better AI understanding
-                if (medataData != null) {
-                    PromptBuilder prompt = new PromptBuilder(englishQuery); // Use English query for AI processing
-
-                    prompt.workflowPromptWithMetadata(medataData, englishQuery, "workflow");
-
-                    // Get AI response incorporating workflow data
-                    var aiResponse = callOpenAIAPI(prompt.build(), "");
-                    logger.info("✅ Generated simple transaction inquiry response");
-
-                    return aiResponse;
-                }
-
-                // Fallback to transaction details prompt if no workflow data
+                // Fallback to transaction details prompt
                 response.append(transactionAIService.getTransactionDetailsPrompt());
                 return response.toString();
             }
@@ -597,6 +608,76 @@ public class AIService {
         } catch (Throwable e) {
             throw new RuntimeException(e);
         }
+    }
+    
+    /**
+     * Check if user is asking "how to check transaction"
+     */
+    private boolean isAskingHowToCheckTransaction(String query) {
+        if (query == null) return false;
+        
+        String lowerQuery = query.toLowerCase().trim();
+        return lowerQuery.contains("how to check transaction") ||
+               lowerQuery.contains("how do i check transaction") ||
+               lowerQuery.contains("how can i check transaction") ||
+               lowerQuery.equals("how to check transaction?") ||
+               lowerQuery.contains("guide to check transaction") ||
+               lowerQuery.contains("steps to check transaction");
+    }
+    
+    /**
+     * Extract custom message from workflow data
+     */
+    private String extractWorkflowMessage(Object medataData) {
+        if (medataData == null) {
+            return null;
+        }
+        
+        try {
+            ObjectMapper mapper = new ObjectMapper();
+            String json = medataData.toString();
+            List<Map<String, WorkflowData>> workflowList = mapper.readValue(json, new TypeReference<>() {});
+            
+            for (Map<String, WorkflowData> workflowMap : workflowList) {
+                for (Map.Entry<String, WorkflowData> entry : workflowMap.entrySet()) {
+                    WorkflowData data = entry.getValue();
+                    
+                    // First check onSuccess message
+                    if (data.getOnSuccess() != null && data.getOnSuccess().getMessage() != null) {
+                        String successMessage = data.getOnSuccess().getMessage().trim();
+                        Boolean isCustomize = !"customize_message".equals(data.getOnSuccess().getActionType());
+                        if (!successMessage.isEmpty() && !isCustomize) {
+                            logger.info("🟢 Found workflow success message: {}", successMessage);
+                            return successMessage;
+                        }
+                    }
+                    
+                    // If no success message, check onFailure message
+                    if (data.getOnFailure() != null && data.getOnFailure().getMessage() != null) {
+                        String failureMessage = data.getOnFailure().getMessage().trim();
+                        Boolean isCustomize = !"customize_message".equals(data.getOnFailure().getActionType());
+                        if (!failureMessage.isEmpty() && !isCustomize) {
+                            logger.info("🔴 Found workflow failure message: {}", failureMessage);
+                            return failureMessage;
+                        }
+                    }
+
+                    if (data.getOnNotFound() != null && data.getOnNotFound().getMessage() != null) {
+                        String notFountMessage = data.getOnNotFound().getMessage().trim();
+                        Boolean isCustomize = !"customize_message".equals(data.getOnNotFound().getActionType());
+                        if (!notFountMessage.isEmpty() && !isCustomize) {
+                            logger.info("🔴 Found workflow failure message: {}", notFountMessage);
+                            return notFountMessage;
+                        }
+                    }
+
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to extract workflow message: {}", e.getMessage());
+        }
+        
+        return null;
     }
 
     /**
@@ -1902,14 +1983,17 @@ public class AIService {
 
             // Step 6: Get workflow data using English query for better matching
             var workflowData = workflowRepository.findAllActiveWorkflowsByTitle(englishQuery);
-            
+
+
             // Step 7: Check if it's a transaction inquiry (use original query for data extraction)
             if (transactionAIService.isTransactionInquiry(englishQuery) || containsTransactionKeywords(englishQuery)) {
                 logger.info("🔁 Transaction inquiry detected");
                 String response = handleTransactionInquiry(workflowData, userQuery, englishQuery, sessionId);
                 return translateToTargetLanguage(response, responseLanguage);
             }
-            System.err.println("english: " + englishQuery);
+
+
+
             // Step 8: Check if the query is about account blocked (use original query for data extraction)
             if (containsAccountBlockedKeywords(englishQuery)) {
                 logger.info("🔒 Account blocked detected");

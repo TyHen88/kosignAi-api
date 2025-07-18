@@ -23,6 +23,8 @@ public class ApiRequest {
     private Long id;
 
     private String name;
+
+    @Column(columnDefinition = "TEXT")
     private String keywords;
     private String description;
 
@@ -32,8 +34,8 @@ public class ApiRequest {
     @Column
     private String authKey; // For API_KEY type
 
-    @Convert(converter = CryptoConverter.class)
-    @Column
+//    @Convert(converter = CryptoConverter.class)
+    @Column(columnDefinition = "TEXT")
     private String authValue;
 
     @Column(nullable = false)
@@ -56,12 +58,21 @@ public class ApiRequest {
     @Column(name = "parameter_name")
     private Set<String> requiredParameters = new HashSet<>();
 
+    private Long workflowId; // Optional, if this request is part of a workflow
+
+    @OneToMany(mappedBy = "apiRequest", cascade = CascadeType.ALL, orphanRemoval = true)
+    private List<ApiResponse> responses = new ArrayList<>();
+
+
 
     @Builder
-    public ApiRequest(Long id, String name, String keywords, String description, String url, HttpMethod method, List<RequestHeader> headers, List<RequestParam> params, String body, Set<String> requiredParameters) {
+    public ApiRequest(Long id, String name, String keywords, String authType, String authKey, String authValue, String description, String url, HttpMethod method, List<RequestHeader> headers, List<RequestParam> params, String body, Set<String> requiredParameters, Long workflowId, List<ApiResponse> responses) {
         this.id = id;
         this.name = name;
         this.keywords = keywords;
+        this.authType = authType != null ? authType : "NONE"; // Default to NONE if not provided
+        this.authKey = authKey;
+        this.authValue = authValue;
         this.description = description;
         this.url = url;
         this.method = method;
@@ -69,5 +80,7 @@ public class ApiRequest {
         this.params = params != null ? params : new ArrayList<>();
         this.body = body;
         this.requiredParameters = requiredParameters != null ? requiredParameters : new HashSet<>();
+        this.workflowId = workflowId;
+        this.responses = responses != null ? responses : new ArrayList<>();
     }
 }

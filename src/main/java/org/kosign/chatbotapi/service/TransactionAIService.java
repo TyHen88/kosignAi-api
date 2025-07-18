@@ -26,7 +26,23 @@ import java.util.regex.Pattern;
 @Slf4j
 @RequiredArgsConstructor
 public class TransactionAIService {
+    private String messages = ""; // Initialize as empty string instead of null
     
+    // Add setter method for custom messages
+    public void setCustomMessage(String customMessage) {
+        this.messages = customMessage != null ? customMessage : "";
+    }
+    
+    // Add getter method for current messages
+    public String getCustomMessage() {
+        return this.messages;
+    }
+    
+    // Clear custom messages
+    public void clearCustomMessage() {
+        this.messages = "";
+    }
+
     private final BakongTransactionService bakongTransactionService;
     @Value("${ai.chat.system-prompt}")
     private String systemPrompt;
@@ -146,6 +162,18 @@ public class TransactionAIService {
      * Enhanced transaction status checking with comprehensive error handling
      */
     public String checkTransactionStatus(String hash, String amountStr, String currency) {
+        return checkTransactionStatus(hash, amountStr, currency, null);
+    }
+    
+    /**
+     * Enhanced transaction status checking with workflow messages support
+     */
+    public String checkTransactionStatus(String hash, String amountStr, String currency, String workflowMessage) {
+        // Set the workflow message if provided
+        if (workflowMessage != null && !workflowMessage.trim().isEmpty()) {
+            setCustomMessage(workflowMessage);
+        }
+        
         Instant startTime = Instant.now();
         log.info("🔍 AI requesting transaction check for hash: {}", hash);
         
@@ -193,27 +221,37 @@ public class TransactionAIService {
             Duration errorDuration = Duration.between(startTime, Instant.now());
             log.error("💥 Error checking transaction status after {} ms: {}", errorDuration.toMillis(), e.getMessage(), e);
             failedChecks.incrementAndGet();
-            
-            return formatServiceError(generateErrorMessage(e));
+
+            if (messages.isEmpty()){
+                log.info("📝 No custom workflow message found, using default status guidance");
+                return e.getMessage();
+            }else {
+                return messages;
+            }
+
         }
     }
 
-    private String generateErrorMessage(Exception e) {
-        String message = e.getMessage();
-        
-        if (message != null) {
-            if (message.contains("Authentication")) {
-                return "🔐 **Authentication Issue** - We're having trouble verifying your transaction due to authentication problems. Please try again in a few minutes.";
-            } else if (message.contains("timeout") || message.contains("Timeout")) {
-                return "⏱️ **Request Timeout** - The transaction check is taking longer than expected. Please try again.";
-            } else if (message.contains("network") || message.contains("Network")) {
-                return "🌐 **Network Issue** - We're experiencing connectivity problems. Please check your connection and try again.";
-            } else if (message.contains("Not Found") || message.contains("404")) {
-                return "🔍 **Transaction Not Found** - No transaction found with the provided details. Please verify your information.";
-            }
+    /**
+     * Process workflow data and extract relevant messages for transaction handling
+     */
+    public String processWorkflowData(Object workflowData, boolean isSuccessScenario) {
+        if (workflowData == null) {
+            return "";
         }
         
-        return "🔄 **Service Issue** - We're experiencing temporary difficulties checking transactions. Please try again in a few minutes or contact support.";
+        try {
+            // This method can be expanded to handle different types of workflow data
+            // For now, it returns a simple message based on the scenario
+            if (isSuccessScenario) {
+                return "✅ Transaction processed successfully according to workflow rules.";
+            } else {
+                return "⚠️ Transaction requires additional verification according to workflow rules.";
+            }
+        } catch (Exception e) {
+            log.warn("Failed to process workflow data: {}", e.getMessage());
+            return "";
+        }
     }
     
     /**
@@ -229,19 +267,13 @@ public class TransactionAIService {
                 
                 🏷️ Transaction Hash
                 
-                8–64 characters (letters & numbers)
-                
-                e.g., c250339a or abc123def456
+                8–64 characters (letters & numbers) e.g., c250339a or abc123def456
                 
                 💰 Amount
                 
-                Exact value sent/received
+                Exact value sent/received e.g., 50 or 25.75
                 
-                e.g., 50 or 25.75
-                
-                💱 Currency
-                
-                USD or KHR only
+                💱 Currency  USD or KHR only
                 
                 💡 Example:
                 Hash: c250339a Amount: 50 Currency: USD
@@ -315,13 +347,21 @@ public class TransactionAIService {
 
         sb.append("</br>");
         // Status-specific guidance with enhanced messaging
-        sb.append(status.getGuidanceMessage());
+        if (messages.isEmpty()){
+            log.info("📝 No custom workflow message found, using default status guidance");
+            sb.append(status.getGuidanceMessage());
+        }else {
+            log.info("🔧 Using custom workflow message: {}", messages);
+            sb.append(messages);
+        }
 
         // Performance information
         sb.append(String.format("\n\n⚡ *Checked in %d ms*", checkDuration.toMillis()));
 
         return sb.toString();
     }
+
+
 
     private TransactionStatus determineTransactionStatus(BakongTransactionResponse response) {
         // Check if we have confirmation data (acknowledgedDateMs indicates successful completion)
@@ -378,13 +418,6 @@ public class TransactionAIService {
         
         log.warn("❓ Unknown tracking status '{}', defaulting to UNKNOWN", status);
         return TransactionStatus.UNKNOWN;
-    }
-
-    private String maskAccountId(String accountId) {
-        if (accountId == null || accountId.length() <= 4) {
-            return accountId;
-        }
-        return accountId.substring(0, 2) + "****" + accountId.substring(accountId.length() - 2);
     }
 
     private String formatAmount(Number amount, String currency) {

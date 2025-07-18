@@ -6,7 +6,11 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ApiRequestRepository extends JpaRepository<ApiRequest, Long> {
-    Optional<ApiRequest> findByKeywords(String keywords);
-    List<ApiRequest> findByNameContainingIgnoreCaseOrKeywordsContainingIgnoreCase(String name, String keywords);
+
+    List<ApiRequest> findAllByWorkflowId(Long workflowId);
+
+    Optional<ApiRequest> findByName(String name);
+
+
 }
 

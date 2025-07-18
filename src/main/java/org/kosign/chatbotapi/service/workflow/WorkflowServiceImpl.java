@@ -7,8 +7,11 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.kosign.chatbotapi.components.common.Pagination;
 import org.kosign.chatbotapi.domains.Category;
 import org.kosign.chatbotapi.domains.Workflow;
+import org.kosign.chatbotapi.domains.openAPITools.ApiRequest;
+import org.kosign.chatbotapi.domains.openAPITools.ApiRequestRepository;
 import org.kosign.chatbotapi.enums.Status;
 import org.kosign.chatbotapi.payload.MainResponse;
+import org.kosign.chatbotapi.payload.openApi.OpenApiRequest;
 import org.kosign.chatbotapi.payload.workflow.WorkflowRequest;
 import org.kosign.chatbotapi.payload.workflow.WorkflowResponse;
 import org.kosign.chatbotapi.repository.CategoryRepository;
@@ -22,6 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 import lombok.RequiredArgsConstructor;
 
 import java.util.Collections;
+import java.util.List;
 import java.util.Map;
 
 @Service
@@ -31,6 +35,7 @@ public class WorkflowServiceImpl implements WorkflowServices {
     private final WorkflowRepository workflowRepository;
     private final ObjectMapper objectMapper;
     private final CategoryRepository categoryRepository;
+    private final ApiRequestRepository apiRequestRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -116,6 +121,24 @@ public class WorkflowServiceImpl implements WorkflowServices {
                 .status(Status.ACTIVE)
                 .build();
         categoryRepository.save(category);
+
+        var openApiRequests = request.getOpenApiRequests();
+        if (openApiRequests != null && !openApiRequests.isEmpty()) {
+            for (var openApiRequest : openApiRequests) {
+                ApiRequest apiRequest = ApiRequest.builder()
+                        .name(openApiRequest.getName())
+                        .keywords(openApiRequest.getKeywords())
+                        .url(openApiRequest.getUrl())
+                        .authType(openApiRequest.getAuthType())
+                        .authKey(openApiRequest.getAuthKey())
+                        .authValue(openApiRequest.getAuthValue())
+                        .method(openApiRequest.getMethod())
+                        .workflowId(savedWorkflow.getId())
+
+                        .build();
+                apiRequestRepository.save(apiRequest);
+            }
+        }
     }
 
     @Override
@@ -136,6 +159,30 @@ public class WorkflowServiceImpl implements WorkflowServices {
         category.setName(request.getCategoryName());
         category.setStatus(Status.ACTIVE);
         categoryRepository.save(category);
+
+        // Remove old API requests
+        List<ApiRequest> existingApiRequests = apiRequestRepository.findAllByWorkflowId(id);
+        if (!existingApiRequests.isEmpty()) {
+            apiRequestRepository.deleteAll(existingApiRequests);
+        }
+
+        // Add new API requests
+        List<OpenApiRequest> openApiRequests = request.getOpenApiRequests();
+        if (openApiRequests != null && !openApiRequests.isEmpty()) {
+            for (OpenApiRequest openApiRequest : openApiRequests) {
+                ApiRequest apiRequest = ApiRequest.builder()
+                        .name(openApiRequest.getName())
+                        .keywords(openApiRequest.getKeywords())
+                        .url(openApiRequest.getUrl())
+                        .authType(openApiRequest.getAuthType())
+                        .authKey(openApiRequest.getAuthKey())
+                        .authValue(openApiRequest.getAuthValue())
+                        .method(openApiRequest.getMethod())
+                        .workflowId(id)
+                        .build();
+                apiRequestRepository.save(apiRequest);
+            }
+        }
 
     }
 

@@ -71,6 +71,20 @@ public class PromptBuilder {
         return this;
     }
 
+    public PromptBuilder workflowMessage(Object data) {
+        prompt.append(String.format(
+            """
+            You are an intelligent assistant. Analyze the following workflow data and provide a clear, structured summary:
+    
+            %s
+    
+            Please ensure your summary includes key actions, outcomes, and any notable issues or insights.
+            """,
+            data));
+        return this;
+    }
+    
+
     public PromptBuilder addSmartJsonPrompt(String jsonData, String userQuery, String queryIntent) {
         // Check if we have valid data
         if (jsonData == null || jsonData.trim().isEmpty() || "null".equals(jsonData.trim()) || "[]".equals(jsonData.trim()) || "{}".equals(jsonData.trim())) {
