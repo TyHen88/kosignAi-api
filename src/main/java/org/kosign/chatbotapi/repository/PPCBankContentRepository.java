@@ -65,10 +65,7 @@ public interface PPCBankContentRepository extends JpaRepository<PPCBank, Long> {
                             jsonb_array_elements_text(row) AS cell
                        WHERE cell ILIKE CONCAT('%', kw.keyword, '%')
                      )
-                     OR (
-                       tb.fts_vector IS NOT NULL
-                       AND tb.fts_vector @@ plainto_tsquery('english', kw.keyword)
-                     )
+                    
                    )
                 ),
                 ranked_matches AS (

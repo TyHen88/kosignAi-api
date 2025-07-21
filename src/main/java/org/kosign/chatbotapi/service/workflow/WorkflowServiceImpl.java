@@ -123,20 +123,30 @@ public class WorkflowServiceImpl implements WorkflowServices {
         categoryRepository.save(category);
 
         var openApiRequests = request.getOpenApiRequests();
+
         if (openApiRequests != null && !openApiRequests.isEmpty()) {
             for (var openApiRequest : openApiRequests) {
-                ApiRequest apiRequest = ApiRequest.builder()
-                        .name(openApiRequest.getName())
-                        .keywords(openApiRequest.getKeywords())
-                        .url(openApiRequest.getUrl())
-                        .authType(openApiRequest.getAuthType())
-                        .authKey(openApiRequest.getAuthKey())
-                        .authValue(openApiRequest.getAuthValue())
-                        .method(openApiRequest.getMethod())
-                        .workflowId(savedWorkflow.getId())
+                // Check if required fields are non-null and not empty
+                if (openApiRequest.getAuthType() != null && !openApiRequest.getAuthType().isEmpty() &&
+                        openApiRequest.getUrl() != null && !openApiRequest.getUrl().isEmpty() &&
+                        openApiRequest.getMethod() != null &&
+                        (openApiRequest.getAuthType().equalsIgnoreCase("NONE") ||
+                                (openApiRequest.getAuthKey() != null && !openApiRequest.getAuthKey().isEmpty() &&
+                                        openApiRequest.getAuthValue() != null && !openApiRequest.getAuthValue().isEmpty()))) {
 
-                        .build();
-                apiRequestRepository.save(apiRequest);
+                    ApiRequest apiRequest = ApiRequest.builder()
+                            .name(openApiRequest.getName())
+                            .keywords(openApiRequest.getKeywords())
+                            .url(openApiRequest.getUrl())
+                            .authType(openApiRequest.getAuthType())
+                            .authKey(openApiRequest.getAuthKey())
+                            .authValue(openApiRequest.getAuthValue())
+                            .method(openApiRequest.getMethod())
+                            .workflowId(savedWorkflow.getId())
+                            .build();
+
+                    apiRequestRepository.save(apiRequest);
+                }
             }
         }
     }
@@ -166,21 +176,30 @@ public class WorkflowServiceImpl implements WorkflowServices {
             apiRequestRepository.deleteAll(existingApiRequests);
         }
 
-        // Add new API requests
         List<OpenApiRequest> openApiRequests = request.getOpenApiRequests();
         if (openApiRequests != null && !openApiRequests.isEmpty()) {
             for (OpenApiRequest openApiRequest : openApiRequests) {
-                ApiRequest apiRequest = ApiRequest.builder()
-                        .name(openApiRequest.getName())
-                        .keywords(openApiRequest.getKeywords())
-                        .url(openApiRequest.getUrl())
-                        .authType(openApiRequest.getAuthType())
-                        .authKey(openApiRequest.getAuthKey())
-                        .authValue(openApiRequest.getAuthValue())
-                        .method(openApiRequest.getMethod())
-                        .workflowId(id)
-                        .build();
-                apiRequestRepository.save(apiRequest);
+                // Validate fields (for 'NONE' authType, we ignore authKey and authValue)
+                if (openApiRequest.getAuthType() != null && !openApiRequest.getAuthType().isEmpty() &&
+                        openApiRequest.getUrl() != null && !openApiRequest.getUrl().isEmpty() &&
+                        openApiRequest.getMethod() != null &&
+                        (openApiRequest.getAuthType().equalsIgnoreCase("NONE") ||
+                                (openApiRequest.getAuthKey() != null && !openApiRequest.getAuthKey().isEmpty() &&
+                                        openApiRequest.getAuthValue() != null && !openApiRequest.getAuthValue().isEmpty()))) {
+
+                    ApiRequest apiRequest = ApiRequest.builder()
+                            .name(openApiRequest.getName())
+                            .keywords(openApiRequest.getKeywords())
+                            .url(openApiRequest.getUrl())
+                            .authType(openApiRequest.getAuthType())
+                            .authKey(openApiRequest.getAuthKey())
+                            .authValue(openApiRequest.getAuthValue())
+                            .method(openApiRequest.getMethod())
+                            .workflowId(id)
+                            .build();
+
+                    apiRequestRepository.save(apiRequest);
+                }
             }
         }
 
