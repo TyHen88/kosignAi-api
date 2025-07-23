@@ -4,9 +4,13 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import okhttp3.*;
+import org.kosign.chatbotapi.domains.openAPITools.ApiResponse;
+import org.kosign.chatbotapi.exception.ResourceNotFoundException;
 import org.kosign.chatbotapi.model.ConversationContext;
 import org.kosign.chatbotapi.model.TitleMatchResult;
+import org.kosign.chatbotapi.payload.workflow.WorkflowAction;
 import org.kosign.chatbotapi.payload.workflow.WorkflowData;
+import org.kosign.chatbotapi.payload.workflow.WorkflowFoundState;
 import org.kosign.chatbotapi.repository.PPCBankContentRepository;
 import org.kosign.chatbotapi.repository.WorkflowRepository;
 import org.kosign.chatbotapi.service.ApiRequestToolsService.ApiRequestService;
@@ -17,6 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionStatus;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
@@ -184,20 +189,20 @@ public class AIService {
                 return response;
             }
 
-            // Step 5: Check if the query is about account blocked
-            if (containsAccountBlockedKeywords(userQuery)) {
-                logger.info("🔒 Account blocked detected");
-                String response = handleAccountBlocked(workflowData, englishQuery, sessionId);
-
-                // Translate account blocked response if needed
-                if (targetLanguage != null && !targetLanguage.isEmpty() &&
-                    !targetLanguage.equalsIgnoreCase("en") && !targetLanguage.equalsIgnoreCase("english")) {
-                    response = translateText(response, targetLanguage);
-                }
-
-                logger.info("✅ Account blocked response ready");
-                return response;
-            }
+//            // Step 5: Check if the query is about account blocked
+//            if (containsAccountBlockedKeywords(userQuery)) {
+//                logger.info("🔒 Account blocked detected");
+//                String response = handleAccountBlocked(workflowData, englishQuery, sessionId);
+//
+//                // Translate account blocked response if needed
+//                if (targetLanguage != null && !targetLanguage.isEmpty() &&
+//                    !targetLanguage.equalsIgnoreCase("en") && !targetLanguage.equalsIgnoreCase("english")) {
+//                    response = translateText(response, targetLanguage);
+//                }
+//
+//                logger.info("✅ Account blocked response ready");
+//                return response;
+//            }
 
             // Step 6: Detect query intent before checking context
             String queryIntent = jsonResponseService.detectQueryIntent(englishQuery);
@@ -561,6 +566,7 @@ public class AIService {
                 
                 // Check if workflow data exists and extract custom message
                 String customMessage = extractWorkflowMessage(medataData);
+
                 
                 if (customMessage != null && !customMessage.trim().isEmpty()) {
                     logger.info("🔧 Using custom workflow message");
@@ -628,56 +634,192 @@ public class AIService {
     /**
      * Extract custom message from workflow data
      */
-    private String extractWorkflowMessage(Object medataData) {
-        if (medataData == null) {
+    private String extractWorkflowMessage(Object metadataData) {
+        if (metadataData == null) {
+            logger.warn("🟡 Metadata data is null, cannot extract workflow message.");
             return null;
         }
-        
+
         try {
             ObjectMapper mapper = new ObjectMapper();
-            String json = medataData.toString();
-            List<Map<String, WorkflowData>> workflowList = mapper.readValue(json, new TypeReference<>() {});
-            
-            for (Map<String, WorkflowData> workflowMap : workflowList) {
-                for (Map.Entry<String, WorkflowData> entry : workflowMap.entrySet()) {
-                    WorkflowData data = entry.getValue();
-                    
-                    // First check onSuccess message
-                    if (data.getOnSuccess() != null && data.getOnSuccess().getMessage() != null) {
-                        String successMessage = data.getOnSuccess().getMessage().trim();
-                        Boolean isCustomize = !"customize_message".equals(data.getOnSuccess().getActionType());
-                        if (!successMessage.isEmpty() && !isCustomize) {
-                            logger.info("🟢 Found workflow success message: {}", successMessage);
-                            return successMessage;
-                        }
-                    }
-                    
-                    // If no success message, check onFailure message
-                    if (data.getOnFailure() != null && data.getOnFailure().getMessage() != null) {
-                        String failureMessage = data.getOnFailure().getMessage().trim();
-                        Boolean isCustomize = !"customize_message".equals(data.getOnFailure().getActionType());
-                        if (!failureMessage.isEmpty() && !isCustomize) {
-                            logger.info("🔴 Found workflow failure message: {}", failureMessage);
-                            return failureMessage;
-                        }
-                    }
+            String json = metadataData.toString();
 
-                    if (data.getOnNotFound() != null && data.getOnNotFound().getMessage() != null) {
-                        String notFountMessage = data.getOnNotFound().getMessage().trim();
-                        Boolean isCustomize = !"customize_message".equals(data.getOnNotFound().getActionType());
-                        if (!notFountMessage.isEmpty() && !isCustomize) {
-                            logger.info("🔴 Found workflow failure message: {}", notFountMessage);
-                            return notFountMessage;
-                        }
-                    }
 
-                }
+            List<Map<String, WorkflowData>> workflowArray = null;
+            Map<String, WorkflowData> workflowMap = null;
+
+            try {
+                // Try parsing as an array of workflows
+                workflowArray = mapper.readValue(json, new TypeReference<>() {});
+                logger.info("🟢 Successfully deserialized workflow as an array.");
+            } catch (Exception ex) {
+                // If parsing as an array fails, try parsing as a single map
+                workflowMap = mapper.readValue(json, new TypeReference<Map<String, WorkflowData>>() {});
+                logger.info("🟢 Successfully deserialized workflow as a map.");
             }
+
+            // Check workflow array
+            if (workflowArray != null && !workflowArray.isEmpty()) {
+                for (Map<String, WorkflowData> singleWorkflowMap : workflowArray) {
+                    String extractedMessage = extractMessageFromMap(singleWorkflowMap);
+                    System.err.println("singleWorkflowMap" + extractedMessage);
+                    if (extractedMessage != null) return extractedMessage;
+                }
+            } else if (workflowMap != null) {
+                // Process map if deserialized successfully
+                String extractedMessage = extractMessageFromMap(workflowMap);
+                System.err.println("extractedMessage" + extractedMessage);
+                if (extractedMessage != null) return extractedMessage;
+            }
+
         } catch (Exception e) {
-            logger.warn("Failed to extract workflow message: {}", e.getMessage());
+            logger.warn("❌ Failed to extract workflow message: {}", e.getMessage(), e);
         }
-        
+
         return null;
+    }
+    private String extractMessageFromMap(Map<String, WorkflowData> workflowMap) {
+        StringBuilder finalResponse = new StringBuilder(); // To gather responses from all entries
+
+        for (Map.Entry<String, WorkflowData> entry : workflowMap.entrySet()) {
+            System.err.println("Entry:"+ entry);
+            WorkflowData data = entry.getValue();
+            WorkflowFoundState isFound = data.getIsFound();
+            logger.debug("📄 Processing workflow entry key: {}, data: {}", entry.getKey(), data);
+
+            try {
+                if ("call_3rd_party".equals(data.getType())){
+                    String apiUrl = data.getApiUrl();
+                    System.err.println("apiUrl 3rd party::" + apiUrl);
+                    logger.debug("API URL: {}", apiUrl);
+                    if (apiUrl != null && !apiUrl.trim().isEmpty()) {
+                        try {
+                            // Execute request using the URL (via ApiRequestService)
+                            ApiResponse response = apiRequestService.executeRequest(apiUrl);
+
+                            if (response.getStatusCode() == 200) {
+                                String body = response.getBody()
+                                        .replaceAll("[\\{\\}\\[\\]\"]", "")  // Remove unwanted characters
+                                        .replaceAll(",", "\n")              // Add line breaks for readability
+                                        .trim();
+                                finalResponse.append("**Here is your 3rd party api response: \n\n").append("\n");
+                                finalResponse.append(body).append("\n");
+
+                                // Use onSuccess from isFound if top-level onSuccess is null
+                                WorkflowAction onSuccess = data.getOnSuccess();
+                                if (onSuccess == null && data.getIsFound() != null) {
+                                    onSuccess = data.getIsFound().getOnSuccess();
+                                }
+
+                                if (onSuccess != null) {
+                                    if ("customize_message".equals(onSuccess.getActionType())) {
+                                        finalResponse.append(onSuccess.getMessage()).append("\n");
+                                    } else {
+                                        finalResponse.append("**Great news! Your transaction with PPCBank has been successfully completed.** 🎉\n\n").append("\n");
+                                    }
+                                } else {
+                                    logger.warn("⚠️ No onSuccess action available for workflow entry: {}", entry.getKey());
+                                }
+                            } else {
+                                // Handle failed API responses
+                                finalResponse.append("Failed to get response from API").append("\n");
+
+                                // Use onFailure from isFound if top-level onFailure is null
+                                WorkflowAction onFailure = data.getOnFailure();
+                                if (onFailure == null && data.getIsFound() != null) {
+                                    onFailure = data.getIsFound().getOnFailure();
+                                }
+
+                                if (onFailure != null && onFailure.getMessage() != null && !onFailure.getMessage().isEmpty()) {
+                                    finalResponse.append(onFailure.getMessage()).append("\n");
+                                } else {
+                                    logger.warn("⚠️ No onFailure action available for workflow entry: {}", entry.getKey());
+                                }
+                            }
+                        } catch (ResourceNotFoundException e) {
+                            logger.warn("❌ Resource not found for API URL: {}. Error: {}", apiUrl, e.getMessage());
+                        } catch (Exception e) {
+                            logger.error("❌ Failed to execute request for API URL: {}. Error: {}", apiUrl, e.getMessage(), e);
+                        }
+                    } else {
+                        logger.warn("⚠️ Skipping workflow entry due to missing or invalid API URL.");
+                    }
+                } else if ("check_bakong".equals(data.getType())) {
+
+                    if ("customize_message".equals(data.getFoundActionType())){
+                        return finalResponse.append(isFound.getMessage()).append("\n").toString();
+                    }else if ("call_api".equals(data.getFoundActionType())){
+                        // Log the API URL
+                        String apiUrl = data.getApiUrl();
+                        logger.debug("API URL: {}", apiUrl);
+                        if (apiUrl != null && !apiUrl.trim().isEmpty()) {
+                            try {
+                                // Execute request using the URL (via ApiRequestService)
+                                ApiResponse response = apiRequestService.executeRequest(apiUrl);
+
+                                if (response.getStatusCode() == 200) {
+                                    String body = response.getBody()
+                                            .replaceAll("[\\{\\}\\[\\]\"]", "")  // Remove unwanted characters
+                                            .replaceAll(",", "\n")              // Add line breaks for readability
+                                            .trim();
+                                    finalResponse.append("**Here is your api response: \n\n").append("\n");
+                                    finalResponse.append(body).append("\n");
+
+                                    // Use onSuccess from isFound if top-level onSuccess is null
+                                    WorkflowAction onSuccess = data.getOnSuccess();
+                                    if (onSuccess == null && data.getIsFound() != null) {
+                                        onSuccess = data.getIsFound().getOnSuccess();
+                                    }
+
+                                    if (onSuccess != null) {
+                                        if ("customize_message".equals(onSuccess.getActionType())) {
+                                            finalResponse.append(onSuccess.getMessage()).append("\n");
+                                        } else {
+                                            finalResponse.append("**Great news! Your transaction with PPCBank has been successfully completed.** 🎉\n\n").append("\n");
+                                        }
+                                    } else {
+                                        logger.warn("⚠️ No onSuccess action available for workflow entry: {}", entry.getKey());
+                                    }
+                                } else {
+                                    // Handle failed API responses
+                                    finalResponse.append("Failed to get response from API").append("\n");
+
+                                    // Use onFailure from isFound if top-level onFailure is null
+                                    WorkflowAction onFailure = data.getOnFailure();
+                                    if (onFailure == null && data.getIsFound() != null) {
+                                        onFailure = data.getIsFound().getOnFailure();
+                                    }
+
+                                    if (onFailure != null && onFailure.getMessage() != null && !onFailure.getMessage().isEmpty()) {
+                                        finalResponse.append(onFailure.getMessage()).append("\n");
+                                    } else {
+                                        logger.warn("⚠️ No onFailure action available for workflow entry: {}", entry.getKey());
+                                    }
+                                }
+                            } catch (ResourceNotFoundException e) {
+                                logger.warn("❌ Resource not found for API URL: {}. Error: {}", apiUrl, e.getMessage());
+                            } catch (Exception e) {
+                                logger.error("❌ Failed to execute request for API URL: {}. Error: {}", apiUrl, e.getMessage(), e);
+                            }
+                        } else {
+                            logger.warn("⚠️ Skipping workflow entry due to missing or invalid API URL.");
+                        }
+                    }else if ("show_message".equals(data.getFoundActionType())){
+                        finalResponse.append("**Great news! Your transaction with PPCBank has been successfully completed.** 🎉\n\n").append("\n");
+
+                    }
+                }else if ("user_input_message".equals(data.getType())){
+                    finalResponse.append(data.getUserInput()).append("\n");
+                }
+
+
+            } catch (Exception e) {
+                logger.error("❌ Error processing workflow entry: {}. Error: {}", entry.getKey(), e.getMessage(), e);
+            }
+        }
+
+        // Return concatenated responses or null if no valid responses were obtained
+        return finalResponse.length() > 0 ? finalResponse.toString().trim() : null;
     }
 
     /**
@@ -1994,12 +2136,12 @@ public class AIService {
 
 
 
-            // Step 8: Check if the query is about account blocked (use original query for data extraction)
-            if (containsAccountBlockedKeywords(englishQuery)) {
-                logger.info("🔒 Account blocked detected");
-                String response = handleAccountBlocked(workflowData, englishQuery, sessionId);
-                return translateToTargetLanguage(response, responseLanguage);
-            }
+//            // Step 8: Check if the query is about account blocked (use original query for data extraction)
+//            if (containsAccountBlockedKeywords(englishQuery)) {
+//                logger.info("🔒 Account blocked detected");
+//                String response = handleAccountBlocked(workflowData, englishQuery, sessionId);
+//                return translateToTargetLanguage(response, responseLanguage);
+//            }
 
             // Step 9: Detect query intent using English query
             String queryIntent = jsonResponseService.detectQueryIntent(englishQuery);

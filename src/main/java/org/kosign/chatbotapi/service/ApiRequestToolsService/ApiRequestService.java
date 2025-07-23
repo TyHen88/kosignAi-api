@@ -95,12 +95,13 @@ public class ApiRequestService {
     }
     //execute by name
     public ApiResponse executeRequest(String name) {
-        System.err.println("name::" + name);
-        Optional<ApiRequest> request = apiRequestRepository.findByName(name);
-        if (request.isEmpty()) {
+        List<ApiRequest> requests = apiRequestRepository.findByUrl(name);
+        if (requests.size() > 1) {
+            throw new IllegalArgumentException("Multiple requests found for the provided URL: " + name);
+        } else if (requests.isEmpty()) {
             throw new ResourceNotFoundException("Request not found with name: " + name);
         }
-        return executeRequest(request.get());
+        return executeRequest(requests.get(0));
     }
 
 

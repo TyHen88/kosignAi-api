@@ -38,7 +38,7 @@ public class ApiRequest {
     @Column(columnDefinition = "TEXT")
     private String authValue;
 
-    @Column(nullable = false)
+    @Column(nullable = false, unique = true)
     private String url;
 
     @Enumerated(EnumType.STRING)

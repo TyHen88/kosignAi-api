@@ -27,7 +27,8 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class TransactionAIService {
     private String messages = ""; // Initialize as empty string instead of null
-    
+    private String workflowAppend = "";
+
     // Add setter method for custom messages
     public void setCustomMessage(String customMessage) {
         this.messages = customMessage != null ? customMessage : "";
@@ -37,7 +38,13 @@ public class TransactionAIService {
     public String getCustomMessage() {
         return this.messages;
     }
-    
+    public void setWorkflowAppend(String workflowAppend) {
+        this.workflowAppend = workflowAppend != null ? workflowAppend : "";
+    }
+    public String getWorkflowAppend() {
+        return this.workflowAppend;
+    }
+
     // Clear custom messages
     public void clearCustomMessage() {
         this.messages = "";
@@ -233,28 +240,6 @@ public class TransactionAIService {
     }
 
     /**
-     * Process workflow data and extract relevant messages for transaction handling
-     */
-    public String processWorkflowData(Object workflowData, boolean isSuccessScenario) {
-        if (workflowData == null) {
-            return "";
-        }
-        
-        try {
-            // This method can be expanded to handle different types of workflow data
-            // For now, it returns a simple message based on the scenario
-            if (isSuccessScenario) {
-                return "✅ Transaction processed successfully according to workflow rules.";
-            } else {
-                return "⚠️ Transaction requires additional verification according to workflow rules.";
-            }
-        } catch (Exception e) {
-            log.warn("Failed to process workflow data: {}", e.getMessage());
-            return "";
-        }
-    }
-    
-    /**
      * Enhanced transaction details prompt with better guidance
      */
     public String getTransactionDetailsPrompt() {
@@ -265,15 +250,15 @@ public class TransactionAIService {
                 
                 📋 Required Info:
                 
-                🏷️ Transaction Hash
+                ️- Transaction Hash
                 
                 8–64 characters (letters & numbers) e.g., c250339a or abc123def456
                 
-                💰 Amount
+               - Amount
                 
                 Exact value sent/received e.g., 50 or 25.75
                 
-                💱 Currency  USD or KHR only
+                - Currency  USD or KHR only
                 
                 💡 Example:
                 Hash: c250339a Amount: 50 Currency: USD
@@ -347,16 +332,16 @@ public class TransactionAIService {
 
         sb.append("</br>");
         // Status-specific guidance with enhanced messaging
-        if (messages.isEmpty()){
-            log.info("📝 No custom workflow message found, using default status guidance");
-            sb.append(status.getGuidanceMessage());
-        }else {
-            log.info("🔧 Using custom workflow message: {}", messages);
+//        if (messages.isEmpty()){
+//            log.info("📝 No custom workflow message found, using default status guidance");
+//            sb.append(status.getGuidanceMessage());
+//        }else {
+//            log.info("🔧 Using custom workflow message: {}", messages);
+//        }
             sb.append(messages);
-        }
 
         // Performance information
-        sb.append(String.format("\n\n⚡ *Checked in %d ms*", checkDuration.toMillis()));
+//        sb.append(String.format("\n\n⚡ *Checked in %d ms*", checkDuration.toMillis()));
 
         return sb.toString();
     }
@@ -485,7 +470,7 @@ public class TransactionAIService {
     }
 
     // Enhanced transaction status enum
-    private enum TransactionStatus {
+    public enum TransactionStatus {
         SUCCESSFUL("", "Success!",
                 "**Great news! Your transaction with PPCBank has been successfully completed.** 🎉\n\n" +
                         "✅ PPCBank has verified and processed your payment securely.\n" +
@@ -496,23 +481,23 @@ public class TransactionAIService {
         ),
 
 
-        FAILED("❌", "FAILED", 
+        FAILED("❌", "FAILED",
             "⚠️ **Transaction Failed** - Your transaction could not be completed.\n\n" +
             "🔧 **Next Steps:**\n" +
             "• Verify your account balance and transaction details\n" +
             "• Check if there are any account restrictions\n" +
             "• Contact PPC Bank support if you need assistance\n" +
             "• You may need to initiate a new transaction"),
-            
-        PENDING("⏳", "PENDING", 
+
+        PENDING("⏳", "PENDING",
             "⏳ **Transaction In Progress** - Your transaction is being processed.\n\n" +
             "⏱️ **What to expect:**\n" +
             "• Processing typically takes a few minutes to several hours\n" +
             "• You'll receive a notification once it's complete\n" +
             "• No action is required from your side\n" +
             "• Contact support if it remains pending for more than 24 hours"),
-            
-        UNKNOWN("❓", "UNKNOWN", 
+
+        UNKNOWN("❓", "UNKNOWN",
             "❓ **Status Unclear** - We couldn't determine the exact transaction status.\n\n" +
             "🔍 **Recommended Actions:**\n" +
             "• Wait a few minutes and check again\n" +
