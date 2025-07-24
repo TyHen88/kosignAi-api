@@ -27,7 +27,7 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class TransactionAIService {
     private String messages = ""; // Initialize as empty string instead of null
-    private String workflowAppend = "";
+    private String inputType = "";
 
     // Add setter method for custom messages
     public void setCustomMessage(String customMessage) {
@@ -38,11 +38,13 @@ public class TransactionAIService {
     public String getCustomMessage() {
         return this.messages;
     }
-    public void setWorkflowAppend(String workflowAppend) {
-        this.workflowAppend = workflowAppend != null ? workflowAppend : "";
+
+    // Add getter method for input type
+    public String getInputType() {
+        return this.inputType;
     }
-    public String getWorkflowAppend() {
-        return this.workflowAppend;
+    public void setInputType(String inputType) {
+        this.inputType = inputType;
     }
 
     // Clear custom messages
@@ -242,30 +244,82 @@ public class TransactionAIService {
     /**
      * Enhanced transaction details prompt with better guidance
      */
+
     public String getTransactionDetailsPrompt() {
-        return """
-                Check Transaction
-                
-                Please provide the following details:
-                
-                📋 Required Info:
-                
-                ️- Transaction Hash
-                
-                8–64 characters (letters & numbers) e.g., c250339a or abc123def456
-                
-               - Amount
-                
-                Exact value sent/received e.g., 50 or 25.75
-                
-                - Currency  USD or KHR only
-                
-                💡 Example:
-                Hash: c250339a Amount: 50 Currency: USD
-                
-                ℹ️ Once you provide this, I’ll check your transaction status right away.
-            """;
+        // Retrieve and log the input type for debugging purposes
+        String inputTypeValue = getInputType();
+        log.debug("InputType: {}", inputTypeValue);
+
+        // Conditional checks for specific input types
+        switch (inputTypeValue) {
+            case "both":
+                return """
+                   🔍 **Check Transaction**
+                   
+                   To help you verify your transaction, please do one of the following:
+                   
+                   📤 Upload your payment slip, **or**
+                   ✍️ Enter your transaction details manually.
+                    • **Transaction Hash**
+                     - 8–64 characters (letters & numbers)
+                     - Example: `c250339a` or `abc123def456`
+                   
+                   • **Amount**
+                     - The exact value sent or received
+                     - Example: `50` or `25.75`
+                   
+                   • **Currency**
+                     - Must be either **USD** or **KHR**
+                   
+                   I'm here to help either way!
+                   """;
+
+            case "image_payment_slip":
+                return """
+                   🔍 **Check Transaction**
+                   
+                   To continue, please upload your payment slip 🧾
+                   
+                   This will help me verify your transaction quickly.
+                   """;
+
+            case "text_hash_payment":
+                return """
+                   🔍 **Check Transaction**
+                   
+                   To proceed, please provide the following information:
+                   
+                   📋 **Required Info:**
+                   • **Transaction Hash**
+                     - 8–64 characters (letters & numbers)
+                     - Example: `c250339a` or `abc123def456`
+                   
+                   • **Amount**
+                     - The exact value sent or received
+                     - Example: `50` or `25.75`
+                   
+                   • **Currency**
+                     - Must be either **USD** or **KHR**
+                   
+                   💡 *Example:*
+                   Hash: `c250339a`  
+                   Amount: `50`  
+                   Currency: `USD`
+                   
+                   ℹ️ Once I receive this info, I’ll check your transaction status right away!
+                   """;
+
+            default:
+                // Log and return a default message for unexpected input types
+                log.warn("Unhandled InputType: {}", inputTypeValue);
+                return """
+                   ⚠️ **Unknown Input Type**
+                   
+                   Sorry, I couldn't understand your input type. Please try again.
+                   """;
+        }
     }
+
 
     private String formatValidationError(TransactionValidationResult validation) {
         StringBuilder sb = new StringBuilder();
@@ -290,7 +344,6 @@ public class TransactionAIService {
             return "❌ **Transaction Not Found**\n\n" +
                    "The transaction could not be found in the system. Please verify your details and try again.";
         }
-        
         StringBuilder sb = new StringBuilder();
         
         // Enhanced status determination with more specific icons
@@ -300,7 +353,7 @@ public class TransactionAIService {
         
         // Comprehensive transaction details with better formatting
         sb.append("**Information**\n\n");
-        sb.append("</br>");
+        sb.append("\n\n");
         // sb.append("Hash:        ").append(response.getHash()).append("\n");
         if (response.getResponseMessage() != null) {
             sb.append(String.format("%-25s %s\n", "Status:", response.getResponseMessage() + " ✅"));
@@ -330,7 +383,7 @@ public class TransactionAIService {
             sb.append(String.format("%-25s %s\n", "Bank:", response.getReceiverBank()));
         }
 
-        sb.append("</br>");
+        sb.append("\n\n");
         // Status-specific guidance with enhanced messaging
 //        if (messages.isEmpty()){
 //            log.info("📝 No custom workflow message found, using default status guidance");

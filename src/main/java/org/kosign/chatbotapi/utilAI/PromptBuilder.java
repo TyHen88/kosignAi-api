@@ -479,6 +479,36 @@ public class PromptBuilder {
         return this;
     }
 
+    // Prompt external search engine
+    public PromptBuilder externalSearch(String userQuery) {
+        prompt.append(String.format(
+                """
+                🔍 You are a smart and reliable external search assistant helping with banking-related queries.
+        
+                🎯 Goal:
+                Provide accurate, up-to-date, and trustworthy information that matches the following query:
+                "%s"
+        
+                📌 Context:
+                - This question may relate to financial transactions, payment verification, banking regulations, or currency handling.
+                - If applicable, include details from authoritative sources (e.g., financial institutions, central banks, payment gateways, or regulatory bodies).
+                - Avoid assumptions; stick to factual and sourced responses.
+        
+                ✅ Output Requirements:
+                - List the most relevant and concise information first.
+                - Include any numeric data, official procedures, or supporting facts if available.
+                - If the query is ambiguous or broad, return diverse top results that might help clarify intent.
+        
+                🧠 Remember:
+                - Be cautious with outdated or speculative sources.
+                - Ensure the information is explainable and user-friendly.
+                """,
+                userQuery
+        ));
+        return this;
+    }
+
+
     public String build() {
         return prompt.toString();
     }

@@ -3,6 +3,7 @@ package org.kosign.chatbotapi.config.security;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.HandlerExceptionResolver;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 import org.springframework.web.servlet.handler.SimpleMappingExceptionResolver;
 
@@ -23,5 +24,13 @@ public class WebConfig implements WebMvcConfigurer {
         resolver.setWarnLogCategory("chatai.error");
         return resolver;
     }
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        registry
+                .addResourceHandler("/swagger-ui/**") // Map Swagger resources
+                .addResourceLocations("classpath:/META-INF/resources/webjars/")
+                .setCachePeriod(0);
+    }
+
 
 }
