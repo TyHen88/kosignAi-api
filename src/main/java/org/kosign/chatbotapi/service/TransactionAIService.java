@@ -28,6 +28,7 @@ import java.util.regex.Pattern;
 public class TransactionAIService {
     private String messages = ""; // Initialize as empty string instead of null
     private String inputType = "";
+    private Integer statusCode;
 
     // Add setter method for custom messages
     public void setCustomMessage(String customMessage) {
@@ -45,6 +46,13 @@ public class TransactionAIService {
     }
     public void setInputType(String inputType) {
         this.inputType = inputType;
+    }
+
+    public void setStatusCode(Integer statusCode){
+        this.statusCode = statusCode;
+    }
+    public Integer getStatusCode(){
+        return this.statusCode;
     }
 
     // Clear custom messages
@@ -231,12 +239,7 @@ public class TransactionAIService {
             log.error("💥 Error checking transaction status after {} ms: {}", errorDuration.toMillis(), e.getMessage(), e);
             failedChecks.incrementAndGet();
 
-            if (messages.isEmpty()){
-                log.info("📝 No custom workflow message found, using default status guidance");
-                return e.getMessage();
-            }else {
-                return messages;
-            }
+            return e.getMessage();
 
         }
     }
@@ -391,7 +394,9 @@ public class TransactionAIService {
 //        }else {
 //            log.info("🔧 Using custom workflow message: {}", messages);
 //        }
-            sb.append(messages);
+
+        sb.append(messages);
+
 
         // Performance information
 //        sb.append(String.format("\n\n⚡ *Checked in %d ms*", checkDuration.toMillis()));

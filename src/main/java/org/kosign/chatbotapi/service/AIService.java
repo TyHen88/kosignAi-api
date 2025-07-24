@@ -14,6 +14,7 @@ import org.kosign.chatbotapi.payload.workflow.WorkflowFoundState;
 import org.kosign.chatbotapi.repository.PPCBankContentRepository;
 import org.kosign.chatbotapi.repository.WorkflowRepository;
 import org.kosign.chatbotapi.service.ApiRequestToolsService.ApiRequestService;
+import org.kosign.chatbotapi.service.bakong.BakongTransactionServiceImpl;
 import org.kosign.chatbotapi.service.workflow.WorkflowServices;
 import org.kosign.chatbotapi.utilAI.PromptBuilder;
 import org.slf4j.Logger;
@@ -690,34 +691,23 @@ public class AIService {
             ObjectMapper mapper = new ObjectMapper();
             String json = metadataData.toString();
 
-            System.err.println("Json+ " + json);
-
-
-            List<Map<String, WorkflowData>> workflowArray = null;
-            Map<String, WorkflowData> workflowMap = null;
+            logger.debug("🟢 Parsing JSON: {}", json);
 
             try {
-                // Try parsing as an array of workflows
-                workflowArray = mapper.readValue(json, new TypeReference<>() {});
+                // Try parsing as array of workflows
+                List<Map<String, WorkflowData>> workflowArray = mapper.readValue(json, new TypeReference<>() {
+                });
                 logger.info("🟢 Successfully deserialized workflow as an array.");
-            } catch (Exception ex) {
-                // If parsing as an array fails, try parsing as a single map
-                workflowMap = mapper.readValue(json, new TypeReference<Map<String, WorkflowData>>() {});
-                logger.info("🟢 Successfully deserialized workflow as a map.");
-            }
-
-            // Check workflow array
-            if (workflowArray != null && !workflowArray.isEmpty()) {
-                for (Map<String, WorkflowData> singleWorkflowMap : workflowArray) {
-                    String extractedMessage = extractMessageFromMap(singleWorkflowMap);
-                    System.err.println("singleWorkflowMap" + extractedMessage);
-                    if (extractedMessage != null) return extractedMessage;
+                for (Map<String, WorkflowData> workflowMap : workflowArray) {
+                    String message = extractMessageFromMap(workflowMap);
+                    if (message != null) return message;
                 }
-            } else if (workflowMap != null) {
-                // Process map if deserialized successfully
-                String extractedMessage = extractMessageFromMap(workflowMap);
-                System.err.println("extractedMessage" + extractedMessage);
-                if (extractedMessage != null) return extractedMessage;
+            } catch (Exception e) {
+                // Try parsing as single map
+                Map<String, WorkflowData> workflowMap = mapper.readValue(json, new TypeReference<>() {
+                });
+                logger.info("🟢 Successfully deserialized workflow as a map.");
+                return extractMessageFromMap(workflowMap);
             }
 
         } catch (Exception e) {
@@ -726,147 +716,108 @@ public class AIService {
 
         return null;
     }
-    private String extractMessageFromMap(Map<String, WorkflowData> workflowMap) {
-        StringBuilder finalResponse = new StringBuilder(); // To gather responses from all entries
 
+    private String extractMessageFromMap(Map<String, WorkflowData> workflowMap) {
+        StringBuilder finalResponse = new StringBuilder();
         for (Map.Entry<String, WorkflowData> entry : workflowMap.entrySet()) {
             WorkflowData data = entry.getValue();
-            WorkflowFoundState isFound = data.getIsFound();
-            System.err.println("Entry: " + entry);
+            String key = entry.getKey();
 
             try {
-                 if ("check_bakong".equals(data.getType())) {
-
-                    if ("customize_message".equals(data.getFoundActionType())){
-                        return finalResponse.append(isFound.getMessage()).append("\n").toString();
-                    }else if ("call_api".equals(data.getFoundActionType())){
-                        // Log the API URL
-                        String apiUrl = data.getApiUrl();
-                        logger.debug("API URL: {}", apiUrl);
-                        if (apiUrl != null && !apiUrl.trim().isEmpty()) {
-                            try {
-                                // Execute request using the URL (via ApiRequestService)
-                                ApiResponse response = apiRequestService.executeRequest(apiUrl);
-
-                                if (response.getStatusCode() == 200) {
-                                    String body = response.getBody()
-                                            .replaceAll("[\\{\\}\\[\\]\"]", "")  // Remove unwanted characters
-                                            .replaceAll(",", "\n")              // Add line breaks for readability
-                                            .trim();
-                                    finalResponse.append("\n").append("- Here is your api response: \n\n").append("\n");
-//                                    finalResponse.append(body).append("\n");
-
-                                    // Use onSuccess from isFound if top-level onSuccess is null
-                                    WorkflowAction onSuccess = data.getOnSuccess();
-                                    if (onSuccess == null && data.getIsFound() != null) {
-                                        onSuccess = data.getIsFound().getOnSuccess();
-                                    }
-
-                                    if (onSuccess != null) {
-                                        if ("customize_message".equals(onSuccess.getActionType())) {
-                                            finalResponse.append(onSuccess.getMessage()).append("\n");
-                                        } else {
-                                            finalResponse.append("**Great news! Your transaction with PPCBank has been successfully completed.** 🎉\n\n").append("\n");
-                                        }
-                                    } else {
-                                        logger.warn("⚠️ No onSuccess action available for workflow entry: {}", entry.getKey());
-                                    }
-                                } else {
-                                    // Handle failed API responses
-                                    finalResponse.append("Failed to get response from API").append("\n");
-
-                                    // Use onFailure from isFound if top-level onFailure is null
-                                    WorkflowAction onFailure = data.getOnFailure();
-                                    if (onFailure == null && data.getIsFound() != null) {
-                                        onFailure = data.getIsFound().getOnFailure();
-                                    }
-
-                                    if (onFailure != null && onFailure.getMessage() != null && !onFailure.getMessage().isEmpty()) {
-                                        finalResponse.append(onFailure.getMessage()).append("\n");
-                                    } else {
-                                        logger.warn("⚠️ No onFailure action available for workflow entry: {}", entry.getKey());
-                                    }
-                                }
-                            } catch (ResourceNotFoundException e) {
-                                logger.warn("❌ Resource not found for API URL: {}. Error: {}", apiUrl, e.getMessage());
-                            } catch (Exception e) {
-                                logger.error("❌ Failed to execute request for API URL: {}. Error: {}", apiUrl, e.getMessage(), e);
-                            }
-                        } else {
-                            logger.warn("⚠️ Skipping workflow entry due to missing or invalid API URL.");
+                switch (data.getType()) {
+                    case "check_bakong":
+                        if ("customize_message".equals(data.getFoundActionType())) {
+                            finalResponse.append(data.getIsFound().getMessage());
+                        } else if ("call_api".equals(data.getFoundActionType())) {
+                            handleApiCall(data, finalResponse, key);
                         }
-                    }else if ("show_message".equals(data.getFoundActionType())){
-                        finalResponse.append("**Great news! Your transaction with PPCBank has been successfully completed.** 🎉\n\n").append("\n");
-                    }
-                } else if ("call_3rd_party".equals(data.getType())){
-                    String apiUrl = data.getApiUrl();
-                    System.err.println("apiUrl 3rd party::" + apiUrl);
-                    logger.debug("API URL: {}", apiUrl);
-                    if (apiUrl != null && !apiUrl.trim().isEmpty()) {
-                        try {
-                            // Execute request using the URL (via ApiRequestService)
-                            ApiResponse response = apiRequestService.executeRequest(apiUrl);
+                        break;
 
-                            if (response.getStatusCode() == 200) {
-                                String body = response.getBody()
-                                        .replaceAll("[\\{\\}\\[\\]\"]", "")  // Remove unwanted characters
-                                        .replaceAll(",", "\n")              // Add line breaks for readability
-                                        .trim();
-                                finalResponse.append("\n").append("- Third-Party Integration Request \n\n").append("\n");
-//                                finalResponse.append(body).append("\n");
+                    case "call_3rd_party":
+                        handleApiCall3rd(data, finalResponse, key);
+                        break;
 
-                                // Use onSuccess from isFound if top-level onSuccess is null
-                                WorkflowAction onSuccess = data.getOnSuccess();
-                                if (onSuccess == null && data.getIsFound() != null) {
-                                    onSuccess = data.getIsFound().getOnSuccess();
-                                }
-
-                                if (onSuccess != null) {
-                                    if ("customize_message".equals(onSuccess.getActionType())) {
-                                        finalResponse.append(onSuccess.getMessage()).append("\n");
-                                    } else {
-                                        finalResponse.append("✅ Successfully retrieved data from the third-party service.\n\n").append("\n");
-                                    }
-                                } else {
-                                    logger.warn("⚠️ No onSuccess action available for workflow entry: {}", entry.getKey());
-                                }
-                            } else {
-                                // Handle failed API responses
-                                finalResponse.append("\n\n").append("\uD83D\uDE15 Oops! We couldn’t reach the external service right now. Please hang tight and try again in a moment.").append("\n");
-
-                                // Use onFailure from isFound if top-level onFailure is null
-                                WorkflowAction onFailure = data.getOnFailure();
-                                if (onFailure == null && data.getIsFound() != null) {
-                                    onFailure = data.getIsFound().getOnFailure();
-                                }
-
-                                if (onFailure != null && onFailure.getMessage() != null && !onFailure.getMessage().isEmpty()) {
-                                    finalResponse.append(onFailure.getMessage()).append("\n");
-                                } else {
-                                    logger.warn("⚠️ No onFailure action available for workflow entry: {}", entry.getKey());
-                                }
-                            }
-                        } catch (ResourceNotFoundException e) {
-                            logger.warn("❌ Resource not found for API URL: {}. Error: {}", apiUrl, e.getMessage());
-                        } catch (Exception e) {
-                            logger.error("❌ Failed to execute request for API URL: {}. Error: {}", apiUrl, e.getMessage(), e);
+                    case "user_input_message":
+                        if (data.getUserInput() != null) {
+                            finalResponse.append("\n\n").append(data.getUserInput()).append("\n");
                         }
-                    } else {
-                        logger.warn("⚠️ Skipping workflow entry due to missing or invalid API URL.");
-                    }
-                }else if ("user_input_message".equals(data.getType())){
-                    finalResponse.append("\n\n").append(data.getUserInput()).append("\n");
+                        break;
+
+                    default:
+                        logger.warn("⚠️ Unknown workflow type: {}", data.getType());
                 }
 
-
             } catch (Exception e) {
-                logger.error("❌ Error processing workflow entry: {}. Error: {}", entry.getKey(), e.getMessage(), e);
+                logger.error("❌ Error processing workflow entry [{}]: {}", key, e.getMessage(), e);
             }
         }
 
-        // Return concatenated responses or null if no valid responses were obtained
         return finalResponse.length() > 0 ? finalResponse.toString().trim() : null;
     }
+
+    private void handleApiCall3rd(WorkflowData data, StringBuilder finalResponse, String key) {
+        String apiUrl = data.getApiUrl();
+        if (apiUrl == null || apiUrl.isBlank()) {
+            logger.warn("⚠️ Skipping workflow entry [{}] due to missing or invalid API URL.", key);
+            return;
+        }
+
+        try {
+            ApiResponse response = apiRequestService.executeRequest(apiUrl);
+
+            if (response.getStatusCode() == 200) {
+                finalResponse.append("\n").append("- Third-Party Integration Request \n\n");
+                WorkflowAction onSuccess = data.getOnSuccess() != null ? data.getOnSuccess() : data.getIsFound() != null ? data.getIsFound().getOnSuccess() : null;
+                if (onSuccess != null && "customize_message".equals(onSuccess.getActionType())) {
+                    finalResponse.append(onSuccess.getMessage()).append("\n");
+                } else {
+                    finalResponse.append("✅ Successfully retrieved data from the service.\n\n");
+                }
+            } else {
+                finalResponse.append("❌ Failed to get response from API\n");
+
+                WorkflowAction onFailure = data.getOnFailure() != null ? data.getOnFailure() : data.getIsFound() != null ? data.getIsFound().getOnFailure() : null;
+                if (onFailure != null && onFailure.getMessage() != null) {
+                    finalResponse.append(onFailure.getMessage()).append("\n");
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("❌ Failed to execute API call [{}]: {}", apiUrl, e.getMessage(), e);
+        }
+    }
+    private void handleApiCall(WorkflowData data, StringBuilder finalResponse, String key) {
+        String apiUrl = data.getApiUrl();
+        if (apiUrl == null || apiUrl.isBlank()) {
+            logger.warn("⚠️ Skipping workflow entry [{}] due to missing or invalid API URL.", key);
+            return;
+        }
+
+        try {
+            ApiResponse response = apiRequestService.executeRequest(apiUrl);
+
+            if (response.getStatusCode() == 200) {
+                finalResponse.append("\n").append("- Call API Customize \n\n");
+                WorkflowAction onSuccess = data.getOnSuccess() != null ? data.getOnSuccess() : data.getIsFound() != null ? data.getIsFound().getOnSuccess() : null;
+                if (onSuccess != null && "customize_message".equals(onSuccess.getActionType())) {
+                    finalResponse.append(onSuccess.getMessage()).append("\n");
+                } else {
+                    finalResponse.append("✅ Successfully retrieved data from the service.\n\n");
+                }
+            } else {
+                finalResponse.append("❌ Failed to get response from API\n");
+
+                WorkflowAction onFailure = data.getOnFailure() != null ? data.getOnFailure() : data.getIsFound() != null ? data.getIsFound().getOnFailure() : null;
+                if (onFailure != null && onFailure.getMessage() != null) {
+                    finalResponse.append(onFailure.getMessage()).append("\n");
+                }
+            }
+
+        } catch (Exception e) {
+            logger.error("❌ Failed to execute API call [{}]: {}", apiUrl, e.getMessage(), e);
+        }
+    }
+
 
     /**
      * Extract transaction data from user query using regex patterns

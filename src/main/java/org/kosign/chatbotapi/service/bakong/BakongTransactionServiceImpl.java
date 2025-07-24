@@ -107,7 +107,6 @@ public class BakongTransactionServiceImpl implements BakongTransactionService {
                 successfulChecks.incrementAndGet();
                 log.info("✅ Transaction check #{} completed successfully for hash: {} in {} ms (attempt {})", 
                     checkNumber, transactionHash, duration.toMillis(), attempt);
-                System.err.println("Response: " + response);
                 return response;
                 
             } catch (RemoteException e) {
