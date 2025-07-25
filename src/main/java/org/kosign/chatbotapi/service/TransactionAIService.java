@@ -388,14 +388,15 @@ public class TransactionAIService {
 
         sb.append("\n\n");
         // Status-specific guidance with enhanced messaging
-//        if (messages.isEmpty()){
-//            log.info("📝 No custom workflow message found, using default status guidance");
-//            sb.append(status.getGuidanceMessage());
-//        }else {
-//            log.info("🔧 Using custom workflow message: {}", messages);
-//        }
+        if (messages.isEmpty()){
+            log.info("📝 No custom workflow message found, using default status guidance");
+            sb.append(status.getGuidanceMessage());
+        }else {
+            log.info("🔧 Using custom workflow message: {}", messages);
+            sb.append(messages);
+        }
 
-        sb.append(messages);
+
 
 
         // Performance information

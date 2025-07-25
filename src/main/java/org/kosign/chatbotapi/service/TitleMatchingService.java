@@ -9,6 +9,7 @@ import org.kosign.chatbotapi.utilAI.PromptBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 
 import java.util.*;
@@ -26,6 +27,7 @@ public class TitleMatchingService {
     @Autowired
     private PPCBankContentRepository pageContentRepository;
 
+    @Autowired
     private WorkflowRepository workflowRepository;
 
     @Autowired
@@ -33,6 +35,10 @@ public class TitleMatchingService {
 
     @Autowired
     private SearchConfigService searchConfigService;
+
+    @Autowired
+    @Lazy
+    private AIService aiService; // Add @Lazy to break circular dependency
 
     // Predefined title patterns for better matching
     private static final Map<String, List<String>> TITLE_PATTERNS = new HashMap<>();
@@ -356,7 +362,7 @@ public class TitleMatchingService {
     }
 
     /**
-     * Placeholder for future external search implementation
+     * Performs external search using AI service
      * This method will be implemented when external search sources are available
      */
     private List<TitleMatchResult> performExternalSearch(String userQuery, int maxResults) {
@@ -369,8 +375,11 @@ public class TitleMatchingService {
             String prompt = promptBuilder.build(); // Generate the prompt content
             logger.debug("🔧 Generated search prompt:\n{}", prompt);
 
-            // Simulate an external search API call
-            List<TitleMatchResult> externalResults = callExternalSearchApi(prompt, maxResults);
+            // Call the AI service to get external search results
+            String aiResponse = aiService.callOpenAIAPI(prompt, "en"); // Default to English
+            
+            // Parse the AI response and convert to TitleMatchResult objects
+            List<TitleMatchResult> externalResults = parseAIResponseToResults(aiResponse, userQuery, maxResults);
 
             logger.debug("✅ External search returned {} results.", externalResults.size());
             return externalResults;
@@ -380,24 +389,134 @@ public class TitleMatchingService {
             return new ArrayList<>(); // Return an empty list on failure
         }
     }
-    /**
-     * Simulates an external API call. Replace with actual external API integration.
-     */
-    private List<TitleMatchResult> callExternalSearchApi(String prompt, int maxResults) {
-        logger.info("🌐 Simulating external API search with the following prompt:\n{}", prompt);
 
-        // Simulated external search results
+    /**
+     * Parses AI response and converts it to TitleMatchResult objects
+     */
+    private List<TitleMatchResult> parseAIResponseToResults(String aiResponse, String userQuery, int maxResults) {
         List<TitleMatchResult> results = new ArrayList<>();
-        for (int i = 1; i <= maxResults; i++) {
-            TitleMatchResult result = TitleMatchResult.builder()
-                    .matchScore(50.0 + i) // Simulated incremental relevance
-                    .matchType("EXTERNAL_API")
-                    .build();
-            results.add(result);
+        
+        if (aiResponse == null || aiResponse.trim().isEmpty()) {
+            logger.warn("Empty AI response received for query: {}", userQuery);
+            return results;
         }
 
-        logger.info("🔍 Simulated external search generated {} results.", results.size());
+        try {
+            // Extract and normalize user query keywords for scoring
+            List<String> queryKeywords = extractQueryKeywords(userQuery);
+            String normalizedQuery = normalizeText(userQuery);
+
+            // Create a single result from the AI response
+            TitleMatchResult result = TitleMatchResult.builder()
+                .matchScore(calculateAIResponseScore(aiResponse, normalizedQuery, queryKeywords))
+                .matchType("EXTERNAL_AI")
+                .matchedKeywords(queryKeywords)
+                .build();
+
+            // Add the result to the list
+            results.add(result);
+
+            // If we need more results, we could potentially split the AI response
+            // into multiple sections or topics and create separate results
+            if (results.size() < maxResults) {
+                List<TitleMatchResult> additionalResults = createAdditionalResultsFromAIResponse(
+                    aiResponse, userQuery, maxResults - results.size()
+                );
+                results.addAll(additionalResults);
+            }
+
+            logger.debug("Parsed AI response into {} TitleMatchResult objects", results.size());
+            
+        } catch (Exception e) {
+            logger.error("Error parsing AI response: {}", e.getMessage(), e);
+        }
+
         return results;
+    }
+
+    /**
+     * Calculates a relevance score for the AI response
+     */
+    private double calculateAIResponseScore(String aiResponse, String normalizedQuery, List<String> queryKeywords) {
+        double score = 0.0;
+        String normalizedResponse = normalizeText(aiResponse);
+
+        // 1. Check for exact phrase matches
+        if (normalizedResponse.contains(normalizedQuery)) {
+            score += 80.0;
+        }
+
+        // 2. Check for keyword matches
+        for (String keyword : queryKeywords) {
+            if (normalizedResponse.contains(keyword)) {
+                score += 20.0;
+            }
+        }
+
+        // 3. Check for banking-related terms (bonus points)
+        String[] bankingTerms = {"bank", "account", "payment", "transfer", "loan", "credit", "debit", "transaction"};
+        for (String term : bankingTerms) {
+            if (normalizedResponse.contains(term)) {
+                score += 5.0;
+            }
+        }
+
+        // 4. Response quality indicators
+        if (aiResponse.length() > 100) {
+            score += 10.0; // Longer, more detailed responses
+        }
+        
+        if (aiResponse.contains("PPC") || aiResponse.contains("Cambodia")) {
+            score += 15.0; // PPC Bank specific content
+        }
+
+        return Math.min(score, 100.0); // Cap at 100
+    }
+
+    /**
+     * Creates additional results by splitting AI response into sections
+     */
+    private List<TitleMatchResult> createAdditionalResultsFromAIResponse(String aiResponse, String userQuery, int maxAdditional) {
+        List<TitleMatchResult> additionalResults = new ArrayList<>();
+        
+        try {
+            // Split response by common section markers
+            String[] sections = aiResponse.split("(?=\\n\\*\\*|\\n📋|\\n💰|\\n🔍|\\n✅|\\n⚠️|\\n📞)");
+            
+            List<String> queryKeywords = extractQueryKeywords(userQuery);
+            String normalizedQuery = normalizeText(userQuery);
+            
+            for (int i = 0; i < Math.min(sections.length, maxAdditional); i++) {
+                String section = sections[i].trim();
+                if (section.length() > 20) { // Only create results for substantial sections
+                    
+                    double sectionScore = calculateAIResponseScore(section, normalizedQuery, queryKeywords);
+                    
+                    TitleMatchResult sectionResult = TitleMatchResult.builder()
+                        .matchScore(sectionScore * 0.8) // Slightly lower score for sections
+                        .matchType("EXTERNAL_AI_SECTION")
+                        .matchedKeywords(queryKeywords)
+                        .build();
+                    
+                    additionalResults.add(sectionResult);
+                }
+            }
+            
+        } catch (Exception e) {
+            logger.error("Error creating additional results from AI response: {}", e.getMessage(), e);
+        }
+        
+        return additionalResults;
+    }
+
+    /**
+     * Simulates an external API call. Replace with actual external API integration.
+     * @deprecated This method is replaced by performExternalSearch
+     */
+    @Deprecated
+    private List<TitleMatchResult> callExternalSearchApi(String prompt, int maxResults) {
+        logger.warn("callExternalSearchApi is deprecated. Use performExternalSearch instead.");
+        return new ArrayList<>();
     }
 
 
