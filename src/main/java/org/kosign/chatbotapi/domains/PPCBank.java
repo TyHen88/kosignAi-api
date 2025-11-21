@@ -11,7 +11,12 @@ import org.hibernate.annotations.UpdateTimestamp;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "tb_ppc_bank")
+@Table(name = "tb_ppc_bank", indexes = {
+    @Index(name = "idx_ppc_bank_status", columnList = "status"),
+    @Index(name = "idx_ppc_bank_status_updated", columnList = "status, updated_at"),
+    @Index(name = "idx_ppc_bank_title", columnList = "title"),
+    @Index(name = "idx_ppc_bank_url", columnList = "url")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -27,6 +32,7 @@ public class PPCBank {
     private String title;
 
     @Column(columnDefinition = "TEXT")
+    @Basic(fetch = FetchType.LAZY) // Lazy load large content
     private String content;
 
     @Column(name = "content_hash")
@@ -39,6 +45,7 @@ public class PPCBank {
     private String error;
 
     @Column(name = "content_json", columnDefinition = "JSONB")
+    @Basic(fetch = FetchType.LAZY) // Lazy load large JSONB content
     private String contentJson;
 
     @CreationTimestamp

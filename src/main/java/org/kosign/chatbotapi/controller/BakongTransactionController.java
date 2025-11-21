@@ -27,7 +27,7 @@ import java.util.Map;
 @RequiredArgsConstructor
 @RequestMapping("/v1")
 public class BakongTransactionController extends ChatAIRestController {
-    
+
     private final BakongTransactionService bakongTransactionService;
     private final TokenRenewalService tokenRenewalService;
     private final org.kosign.chatbotapi.service.TransactionAIService transactionAIService;
@@ -39,28 +39,28 @@ public class BakongTransactionController extends ChatAIRestController {
         if (!"application/json".equals(contentType)) {
             throw new IllegalArgumentException("Content-Type must be application/json");
         }
-        
-        // Validate authorization (simplified - in real app, implement proper JWT validation)
+
+        // Validate authorization (simplified - in real app, implement proper JWT
+        // validation)
         if (!authorization.startsWith("Bearer ")) {
             throw new SecurityException("Invalid authorization header");
         }
-        
+
         BakongTransactionResponse response = bakongTransactionService.checkTransactionStatus(request);
-        
+
         return ok(response);
     }
-    
 
     @PostMapping("/renew_token")
     public ResponseEntity<?> renewToken(@Valid @RequestBody RenewTokenRequest request) {
         log.info("Token renewal requested for email: {}", request.getEmail());
-        
+
         RenewTokenResponse response = tokenRenewalService.renewToken(request);
-        
+
         log.info("Token renewal successful for email: {}", request.getEmail());
         return ok(response);
     }
-    
+
     /**
      * Test endpoint to check if the internal transaction AI service is working
      */
@@ -70,30 +70,31 @@ public class BakongTransactionController extends ChatAIRestController {
             String hash = request.get("hash");
             String amount = request.get("amount");
             String currency = request.get("currency");
-            
+
             System.err.println("=== TEST ENDPOINT CALLED ===");
-            System.err.println("Testing transaction AI with: hash=" + hash + ", amount=" + amount + ", currency=" + currency);
-            
-            String result = transactionAIService.checkTransactionStatus(hash, amount, currency);
-            
+            System.err.println(
+                    "Testing transaction AI with: hash=" + hash + ", amount=" + amount + ", currency=" + currency);
+
+            BakongTransactionResponse result = transactionAIService.checkTransactionStatus(hash, amount, currency);
+
             Map<String, Object> response = new HashMap<>();
             response.put("success", true);
             response.put("result", result);
-            
+
             return ok(response);
-            
+
         } catch (Exception e) {
             System.err.println("Test endpoint error: " + e.getMessage());
             e.printStackTrace();
-            
+
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("success", false);
             errorResponse.put("error", e.getMessage());
-            
+
             return ResponseEntity.badRequest().body(errorResponse);
         }
     }
-    
+
     /**
      * Test endpoint to directly call BakongTransactionService
      */
@@ -101,19 +102,19 @@ public class BakongTransactionController extends ChatAIRestController {
     public ResponseEntity<?> testDirectAPI(@Valid @RequestBody BakongTransactionRequest request) {
         try {
             System.err.println("=== DIRECT API TEST ENDPOINT CALLED ===");
-            
+
             BakongTransactionResponse response = bakongTransactionService.checkTransactionStatus(request);
-            
+
             return ok(response);
-            
+
         } catch (Exception e) {
             System.err.println("Direct API test error: " + e.getMessage());
             e.printStackTrace();
-            
+
             Map<String, Object> errorResponse = new HashMap<>();
             errorResponse.put("success", false);
             errorResponse.put("error", e.getMessage());
-            
+
             return ResponseEntity.badRequest().body(errorResponse);
         }
     }

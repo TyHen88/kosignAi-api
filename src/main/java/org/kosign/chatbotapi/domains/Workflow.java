@@ -13,7 +13,11 @@ import java.time.LocalDateTime;
 import java.util.Map;
 
 @Entity
-@Table(name = "tb_workflow")
+@Table(name = "tb_workflow", indexes = {
+    @Index(name = "idx_workflow_status", columnList = "sts"),
+    @Index(name = "idx_workflow_status_created", columnList = "sts, created_at"),
+    @Index(name = "idx_workflow_title", columnList = "title")
+})
 @Data
 @Builder
 @NoArgsConstructor
@@ -28,6 +32,7 @@ public class Workflow {
     private String imageUrl;
 
     @Column(name = "goal_statement", columnDefinition = "TEXT")
+    @Basic(fetch = FetchType.LAZY) // Lazy load large text
     private String goalStatement;
 
     @Column(name = "sts", nullable = false, length = Types.CHAR)
@@ -46,5 +51,6 @@ public class Workflow {
     // 🔹 Dynamic data storage using JSONB
     @JdbcTypeCode(SqlTypes.JSON)
     @Column(name = "metadata", columnDefinition = "jsonb")
+    @Basic(fetch = FetchType.LAZY) // Lazy load large JSONB metadata
     private Map<String, Object> metadata;
 }

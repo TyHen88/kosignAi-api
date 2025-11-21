@@ -4,13 +4,17 @@ import java.util.List;
 
 import org.kosign.chatbotapi.domains.Workflow;
 import org.kosign.chatbotapi.payload.workflow.IGetWorkflow;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.QueryHints;
 import org.springframework.data.repository.query.Param;
+import jakarta.persistence.QueryHint;
 
 public interface WorkflowRepository extends JpaRepository<Workflow, Long>{
+    @QueryHints(@QueryHint(name = "org.hibernate.fetchSize", value = "5"))
     List<Workflow> findTop5ByTitleContainingIgnoreCaseOrGoalStatementContainingIgnoreCase(String title, String goal);
 
 //    @Query("""
@@ -22,6 +26,7 @@ public interface WorkflowRepository extends JpaRepository<Workflow, Long>{
 //            """)
 //    List<Workflow> findAllActiveWorkflows(@Param("titleKeyword") String titleKeyword);
 
+    @Cacheable(value = "workflow-metadata-cache", key = "#searchValue", unless = "#result == null || #result.isEmpty()")
     @Query(
             value = """
                     SELECT DISTINCT w.metadata
@@ -33,9 +38,11 @@ public interface WorkflowRepository extends JpaRepository<Workflow, Long>{
                         :searchValue IS NULL OR :searchValue = '' OR
                         unaccent(c.name) ILIKE unaccent(CONCAT('%', word, '%'))
                         )
+                    LIMIT 10
                     """,
             nativeQuery = true
     )
+    @QueryHints(@QueryHint(name = "org.hibernate.fetchSize", value = "10"))
     List<String> findAllActiveWorkflowsByTitle(@Param("searchValue") String searchValue);
 
     @Query(
@@ -83,8 +90,10 @@ public interface WorkflowRepository extends JpaRepository<Workflow, Long>{
     Page<IGetWorkflow> findAllActiveWorkflows(@Param("searchValue") String searchValue, Pageable pageable);
 
 
+    @Cacheable(value = "workflow-status-cache", key = "'active'")
     @Query("""
-            SELECT w FROM Workflow w  WHERE w.status = '1'""")
+            SELECT w FROM Workflow w WHERE w.status = '1'""")
+    @QueryHints(@QueryHint(name = "org.hibernate.fetchSize", value = "50"))
     List<Workflow> findAllByStatus();
 
 }

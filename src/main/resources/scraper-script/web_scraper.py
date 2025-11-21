@@ -44,10 +44,10 @@ class SpringIntegratedScraper:
     def _init_db(self):
         try:
             self.conn = psycopg2.connect(
-                dbname=os.getenv("DB_NAME", "postgres"),
-                user=os.getenv("DB_USER", "postgres"),
-                password=os.getenv("DB_PASSWORD", "bizwebadmin123$"),
-                host=os.getenv("DB_HOST", "192.168.178.239"),
+                dbname=os.getenv("DB_NAME", "web_scraper"),
+                user=os.getenv("DB_USER", "mac_pg"),
+                password=os.getenv("DB_PASSWORD", "12345678"),
+                host=os.getenv("DB_HOST", "localhost"),
                 port=os.getenv("DB_PORT", "5432"),
             )
             print("Successfully connected to PostgreSQL database")

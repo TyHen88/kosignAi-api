@@ -33,7 +33,14 @@ public class CacheConfig {
             "domain-analysis-cache",
             "conversation-context-cache",
             "bakong-tokens",
-            "search-config"
+            "search-config",
+            "workflow-metadata-cache",
+            "workflow-status-cache",
+            "category-active-cache",
+            "category-workflow-cache",
+            "user-email-cache",
+            "translation-cache",
+            "language-detection-cache"
         ));
         
         // Allow dynamic cache creation

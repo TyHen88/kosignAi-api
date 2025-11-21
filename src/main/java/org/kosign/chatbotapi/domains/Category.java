@@ -14,7 +14,11 @@ import java.sql.Types;
 @Setter
 @NoArgsConstructor
 @Entity
-@Table(name = "tb_category")
+@Table(name = "tb_category", indexes = {
+    @Index(name = "idx_category_status", columnList = "sts"),
+    @Index(name = "idx_category_workflow_id", columnList = "workflowId"),
+    @Index(name = "idx_category_name", columnList = "name")
+})
 public class Category {
 
     @Id
