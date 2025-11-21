@@ -24,8 +24,8 @@ spring:
         order_updates: true
 
   datasource:
-    url: jdbc:postgresql://localhost:5433/web_scraper?autoCommit=false
-    username: postgres
+    url: jdbc:postgresql://localhost:5432/web_scraper?autoCommit=false
+    username: mac_pg
     password: 12345678
     driver-class-name: org.postgresql.Driver
     # Connection pool optimization
@@ -173,7 +173,7 @@ bakong:
       endpoint: /check_transaction_by_short_hash
     timeout: 30000
     max-retries: 3
-    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoiZTBjNjM3YmI3NWNjNGM2YSJ9LCJpYXQiOjE3NTE0MzYyNzAsImV4cCI6MTc1OTIxMjI3MH0.-4UENMZRQ0MJV3fMvp_hgohfmeuUdL5uV5_x24AUJ2c
+    token: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJkYXRhIjp7ImlkIjoiZTBjNjM3YmI3NWNjNGM2YSJ9LCJpYXQiOjE3NjM3MDYyMjgsImV4cCI6MTc3MTQ4MjIyOH0.dgzGEKOcDwA681dirz7-D9nylfeGtFbIQlzHWkBK3SU
     
 
 # Spring Batch scheduler config
