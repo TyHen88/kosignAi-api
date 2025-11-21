@@ -274,7 +274,7 @@ spring:
         order_inserts: ${SPRING_JPA_PROPERTIES_HIBERNATE_ORDER_INSERTS:true}
         order_updates: ${SPRING_JPA_PROPERTIES_HIBERNATE_ORDER_UPDATES:true}
 
-  datasource:
+  datasource: 
     url: jdbc:postgresql://${PGHOST}:${PGPORT}/${PGDATABASE}
     username: ${PGUSER}
     password: ${PGPASSWORD}

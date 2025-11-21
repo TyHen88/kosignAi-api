@@ -2,7 +2,7 @@
 FROM openjdk:21-jdk-slim
 
 # Set working directory
-WORKDIR /app
+WORKDIR /app 
 
 # Set environment variables for Java
 ENV JAVA_HOME=/usr/local/openjdk-21
